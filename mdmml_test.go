@@ -1,8 +1,10 @@
 package mdmml
 
 import (
-	"reflect"
+	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewMDMML(t *testing.T) {
@@ -18,134 +20,88 @@ func TestNewMDMML(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewMDMML(tt.args.src); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewMDMML() = %v, want %v", got, tt.want)
-			}
+			got := NewMDMML(tt.args.src)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func TestMDMML_Header(t *testing.T) {
-	type fields struct {
-		Title  string
-		header []byte
-		Tracks []Track
-	}
+func TestMDMML_SMF(t *testing.T) {
 	tests := []struct {
-		name   string
-		fields fields
-		want   []byte
+		name     string
+		filename string
+		want     []byte
 	}{
-		{name: "normal", want: []byte{
+		{name: "normal", filename: "./testdata/test.md", want: []byte{
+			// Header
 			0x4D, 0x54, 0x68, 0x64, // "MThd"
 			0x00, 0x00, 0x00, 0x06, // Length
 			0x00, 0x01, // Format
 			0x00, 0x03, // Tracks
 			0x03, 0xC0, // Divisions(960)
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				Title:  tt.fields.Title,
-				header: tt.fields.header,
-				Tracks: tt.fields.Tracks,
-			}
-			if got := mm.Header(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MDMML.Header() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMDMML_ConductorTrack(t *testing.T) {
-	type fields struct {
-		Title  string
-		header []byte
-		Tracks []Track
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   []byte
-	}{
-		{name: "normal", want: []byte{
+			// Conductor
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
 			0x00, 0x00, 0x00, 0x17, // Length
 			0x00, 0xFF, 0x03, 0x00, // Title
 			0x00, 0xFF, 0x51, 0x03, 0x06, 0x8A, 0x1B, // Tempo
 			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
 			0x00, 0xFF, 0x2F, 0x00, // EOT
+			// Track A
+			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
+			0x00, 0x00, 0x00, 0x2B, // Length
+			0x00, 0xFF, 0x03, 0x00, // Title
+			0x00, 0xFF, 0x21, 0x01, 0x00, // port
+			0x00, 0xB0, 0x79, 0x00, // CC#121(Reset)
+			0x00, 0xB0, 0x00, 0x00, // CC#0(MSB)
+			0x00, 0xB0, 0x20, 0x00, // CC#32(LSB)
+			0x00, 0xC0, 0x28, // Program Change
+			0x00, 0xB0, 0x07, 0x64, // CC#7(Volume)
+			0x9E, 0x00, 0x90, 0x3C, 0x64, // Note ON
+			0x9E, 0x00, 0x80, 0x3C, 0x00, // Note OFF
+			0x9E, 0x00, 0xFF, 0x2F, 0x00, //EOT
+			// Track B
+			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
+			0x00, 0x00, 0x00, 0x29, // Length
+			0x00, 0xFF, 0x03, 0x00, // Title
+			0x00, 0xFF, 0x21, 0x01, 0x00, // port
+			0x00, 0xB0, 0x79, 0x00, // CC#121(Reset)
+			0x00, 0xB0, 0x00, 0x00, // CC#0(MSB)
+			0x00, 0xB0, 0x20, 0x00, // CC#32(LSB)
+			0x00, 0xC0, 0x28, // Program Change
+			0x00, 0xB0, 0x07, 0x64, // CC#7(Volume)
+			0x00, 0x90, 0x3E, 0x64, // Note ON
+			0x9E, 0x00, 0x80, 0x3E, 0x00, // Note OFF
+			0x00, 0xFF, 0x2F, 0x00, //EOT
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				Title:  tt.fields.Title,
-				header: tt.fields.header,
-				Tracks: tt.fields.Tracks,
-			}
-			if got := mm.ConductorTrack(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MDMML.ConductorTrack() = %v, want %v", got, tt.want)
-			}
+			src, _ := os.ReadFile(tt.filename)
+			mm := NewMDMML(src)
+			got := mm.SMF()
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func TestMDMML_TrackData(t *testing.T) {
-	type fields struct {
-		Title  string
-		header []byte
-		Tracks []Track
-	}
-	type args struct {
-		name string
-	}
+func Test_parse(t *testing.T) {
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   []byte
+		name     string
+		filename string
+		want     *MDMML
 	}{
-		// TODO: Add test cases.
+		{name: "normal", filename: "./testdata/test.md", want: &MDMML{
+			Tracks: []Track{
+				{name: "A", mml: "cdefgab>cc<bagfedc"},
+				{name: "B", mml: "efgab>cdeedc<bagfe"},
+			},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				Title:  tt.fields.Title,
-				header: tt.fields.header,
-				Tracks: tt.fields.Tracks,
-			}
-			if got := mm.TrackData(tt.args.name); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MDMML.TrackData() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMDMML_SMF(t *testing.T) {
-	type fields struct {
-		Title  string
-		header []byte
-		Tracks []Track
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   []byte
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				Title:  tt.fields.Title,
-				header: tt.fields.header,
-				Tracks: tt.fields.Tracks,
-			}
-			if got := mm.SMF(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MDMML.SMF() = %v, want %v", got, tt.want)
-			}
+			src, _ := os.ReadFile(tt.filename)
+			got := parse(src)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
