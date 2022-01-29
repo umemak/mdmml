@@ -1,6 +1,7 @@
 package mdmml
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -84,7 +85,7 @@ func TestMDMML_SMF(t *testing.T) {
 	}
 }
 
-func Test_parse(t *testing.T) {
+func TestMDtoMML(t *testing.T) {
 	tests := []struct {
 		name     string
 		filename string
@@ -99,8 +100,144 @@ func Test_parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			src, _ := os.ReadFile(tt.filename)
-			got := parse(src)
+			src, err := os.ReadFile(tt.filename)
+			assert.NoError(t, err)
+			fmt.Printf("%s", src)
+			got := MDtoMML(src)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_noteOnOff(t *testing.T) {
+	type args struct {
+		oct  int
+		note string
+		vel  int
+		len  int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "v100l8o4c", args: args{oct: 4, note: "c", vel: 100, len: 4}, want: []byte{
+			0x00, 0x90, 0x30, 0x64, // Note ON
+			0x81, 0x70, 0x00, 0x80, 0x30, 0x00, // Note OFF
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: 960,
+			}
+			got := mm.noteOnOff(tt.args.oct, tt.args.note, tt.args.vel, tt.args.len)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_itob(t *testing.T) {
+	type args struct {
+		i int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "<128", args: args{i: 127}, want: []byte{0x7f}},
+		{name: "<16384", args: args{i: 16383}, want: []byte{0xff, 0x7f}},
+		{name: "<2097152", args: args{i: 2097151}, want: []byte{0xff, 0xff, 0x7f}},
+		{name: "<268435456", args: args{i: 268435455}, want: []byte{0xff, 0xff, 0xff, 0x7f}},
+		{name: ">=268435456", args: args{i: 268435456}, want: []byte{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := itob(tt.args.i)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMDMML_lenToTick(t *testing.T) {
+	type fields struct {
+		divisions int
+		header    []byte
+		Conductor Track
+		Tracks    []Track
+	}
+	type args struct {
+		len int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   int
+	}{
+		{name: "div960 len8", fields: fields{divisions: 960}, args: args{len: 8}, want: 120},
+		{name: "div960 len4", fields: fields{divisions: 960}, args: args{len: 4}, want: 240},
+		{name: "div480 len8", fields: fields{divisions: 480}, args: args{len: 8}, want: 60},
+		{name: "div480 len4", fields: fields{divisions: 480}, args: args{len: 4}, want: 120},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: tt.fields.divisions,
+				header:    tt.fields.header,
+				Conductor: tt.fields.Conductor,
+				Tracks:    tt.fields.Tracks,
+			}
+			got := mm.lenToTick(tt.args.len)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_num(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name  string
+		args  args
+		want  int
+		want1 int
+	}{
+		{name: "1桁", args: args{s: "1a"}, want: 1, want1: 1},
+		{name: "2桁", args: args{s: "12a"}, want: 12, want1: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := num(tt.args.s)
+			if got != tt.want {
+				t.Errorf("num() got = %v, want %v", got, tt.want)
+			}
+			if got1 != tt.want1 {
+				t.Errorf("num() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func TestMDMML_toSMF(t *testing.T) {
+	type args struct {
+		mml string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "normal", args: args{mml: "cde"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: 960,
+			}
+			got := mm.toSMF(tt.args.mml)
 			assert.Equal(t, tt.want, got)
 		})
 	}
