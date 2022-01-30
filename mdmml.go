@@ -3,7 +3,6 @@ package mdmml
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -89,8 +88,7 @@ func (mm *MDMML) SMF() []byte {
 }
 
 func MDtoMML(src []byte) *MDMML {
-	fmt.Printf("%s", src)
-	mm := &MDMML{}
+	mm := &MDMML{divisions: 960}
 	lines := bytes.Split(src, []byte("\n"))
 	for i := 0; i < len(lines); i++ {
 		if string(lines[i]) == "---" { // Front Matter
@@ -148,9 +146,8 @@ func MDtoMML(src []byte) *MDMML {
 }
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
-	for _, t := range mm.Tracks {
-		fmt.Printf("t: %s: %s", t.name, t.mml)
-		t.smf = mm.toSMF(t.mml)
+	for i, t := range mm.Tracks {
+		mm.Tracks[i].smf = mm.toSMF(t.mml, i)
 	}
 	mm.header = []byte{
 		0x4D, 0x54, 0x68, 0x64, // "MThd"
@@ -165,7 +162,7 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
 			0x00, 0x00, 0x00, 0x17, // Length
 			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x51, 0x03, 0x06, 0x8A, 0x1B, // Tempo
+			0x00, 0xFF, 0x51, 0x03, 0x06, 0x8A, 0x1B, // Tempo 140
 			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
 			0x00, 0xFF, 0x2F, 0x00, // EOT
 		},
@@ -173,15 +170,15 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 	return mm
 }
 
-func (mm *MDMML) toSMF(mml string) []byte {
-	smf := []byte{}
-	oct := 3
+func (mm *MDMML) toSMF(mml string, port int) []byte {
+	notes := []byte{}
+	oct := 4
 	vel := 100
 	defL := 8
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
 		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") { // note
-			smf = append(smf, mm.noteOnOff(oct, s, vel, defL)...)
+			notes = append(notes, mm.noteOnOff(oct, s, vel, defL)...)
 		} else if s == "o" || s == "O" { // octave
 			i++
 			o, l := num(string(mml[i]))
@@ -206,7 +203,7 @@ func (mm *MDMML) toSMF(mml string) []byte {
 			if l > 0 {
 				i = i + l
 			}
-			smf = append(smf, mm.programChange(o)...)
+			notes = append(notes, mm.programChange(o)...)
 		} else if s == "v" { // velocity
 			i++
 			o, l := num(string(mml[i]))
@@ -216,6 +213,18 @@ func (mm *MDMML) toSMF(mml string) []byte {
 			}
 		}
 	}
+	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                // "MTrk"
+	smf = append(smf, itob(len(notes)+32, 4)...)         // Length
+	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
+	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
+	smf = append(smf, itob(port, 0)...)                  // Port
+	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
+	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
+	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
+	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)       // Program Change
+	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
+	smf = append(smf, notes...)
+	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
 	return smf
 }
 
@@ -238,14 +247,16 @@ func num(s string) (int, int) {
 
 func (mm *MDMML) noteOnOff(oct int, note string, vel int, len int) []byte {
 	cd := map[string]int{"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
-	n := oct*12 + cd[note]
+	n := (oct+1)*12 + cd[note]
 	ret := []byte{}
+	// on
 	ret = append(ret, []byte{0x00, 0x90}...)
-	ret = append(ret, itob(n)...)
-	ret = append(ret, itob(vel)...)
-	ret = append(ret, itob(mm.lenToTick(len))...)
-	ret = append(ret, []byte{0x00, 0x80}...)
-	ret = append(ret, itob(n)...)
+	ret = append(ret, itob(n, 0)...)
+	ret = append(ret, itob(vel, 0)...)
+	// off
+	ret = append(ret, itob(mm.lenToTick(len), 0)...)
+	ret = append(ret, []byte{0x80}...)
+	ret = append(ret, itob(n, 0)...)
 	ret = append(ret, []byte{0x00}...)
 	return ret
 }
@@ -253,20 +264,26 @@ func (mm *MDMML) noteOnOff(oct int, note string, vel int, len int) []byte {
 func (mm *MDMML) programChange(p int) []byte {
 	ret := []byte{}
 	ret = append(ret, []byte{0x00, 0xC0}...)
-	ret = append(ret, itob(p)...)
+	ret = append(ret, itob(p, 0)...)
 	return ret
 }
 
 // http://www13.plala.or.jp/kymats/study/MULTIMEDIA/midiStream_format.html
-func itob(i int) []byte {
+func itob(i int, f int) []byte {
 	ret := []byte{}
 	buf := make([]byte, binary.MaxVarintLen64)
 	if i < 128 {
+		for j := 1; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
 		binary.BigEndian.PutUint64(buf, uint64(i))
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
 	if i < 16384 {
+		for j := 2; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
 		binary.BigEndian.PutUint64(buf, uint64((i>>7)|0x80))
 		ret = append(ret, buf[7:8]...)
 		binary.BigEndian.PutUint64(buf, uint64(i&0x7f))
@@ -274,6 +291,9 @@ func itob(i int) []byte {
 		return ret
 	}
 	if i < 2097152 {
+		for j := 3; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
 		binary.BigEndian.PutUint64(buf, uint64((i>>14)|0x80))
 		ret = append(ret, buf[7:8]...)
 		binary.BigEndian.PutUint64(buf, uint64((i>>7)|0x80))
@@ -283,6 +303,9 @@ func itob(i int) []byte {
 		return ret
 	}
 	if i < 268435456 {
+		for j := 4; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
 		binary.BigEndian.PutUint64(buf, uint64((i>>21)|0x80))
 		ret = append(ret, buf[7:8]...)
 		binary.BigEndian.PutUint64(buf, uint64((i>>14)|0x80))
@@ -297,5 +320,9 @@ func itob(i int) []byte {
 }
 
 func (mm *MDMML) lenToTick(len int) int {
-	return mm.divisions / len
+	return mm.divisions * 4 / len
+}
+
+func tempoMs(t int) int {
+	return 60 * 1000 * 1000 / t
 }

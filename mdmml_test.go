@@ -1,7 +1,6 @@
 package mdmml
 
 import (
-	"fmt"
 	"os"
 	"testing"
 
@@ -102,7 +101,6 @@ func TestMDtoMML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			src, err := os.ReadFile(tt.filename)
 			assert.NoError(t, err)
-			fmt.Printf("%s", src)
 			got := MDtoMML(src)
 			assert.Equal(t, tt.want, got)
 		})
@@ -122,8 +120,8 @@ func Test_noteOnOff(t *testing.T) {
 		want []byte
 	}{
 		{name: "v100l8o4c", args: args{oct: 4, note: "c", vel: 100, len: 4}, want: []byte{
-			0x00, 0x90, 0x30, 0x64, // Note ON
-			0x81, 0x70, 0x00, 0x80, 0x30, 0x00, // Note OFF
+			0x00, 0x90, 0x3c, 0x64, // Note ON
+			0x81, 0x70, 0x00, 0x80, 0x3c, 0x00, // Note OFF
 		}},
 	}
 	for _, tt := range tests {
@@ -140,6 +138,7 @@ func Test_noteOnOff(t *testing.T) {
 func Test_itob(t *testing.T) {
 	type args struct {
 		i int
+		f int
 	}
 	tests := []struct {
 		name string
@@ -151,10 +150,15 @@ func Test_itob(t *testing.T) {
 		{name: "<2097152", args: args{i: 2097151}, want: []byte{0xff, 0xff, 0x7f}},
 		{name: "<268435456", args: args{i: 268435455}, want: []byte{0xff, 0xff, 0xff, 0x7f}},
 		{name: ">=268435456", args: args{i: 268435456}, want: []byte{}},
+		{name: "<128 fix4", args: args{i: 127, f: 4}, want: []byte{0x00, 0x00, 0x00, 0x7f}},
+		{name: "<16384 fix4", args: args{i: 16383, f: 4}, want: []byte{0x00, 0x00, 0xff, 0x7f}},
+		{name: "<2097152 fix4", args: args{i: 2097151, f: 4}, want: []byte{0x00, 0xff, 0xff, 0x7f}},
+		{name: "<268435456 fix4", args: args{i: 268435455, f: 4}, want: []byte{0xff, 0xff, 0xff, 0x7f}},
+		{name: ">=268435456 fix4", args: args{i: 268435456, f: 4}, want: []byte{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := itob(tt.args.i)
+			got := itob(tt.args.i, tt.args.f)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -230,15 +234,43 @@ func TestMDMML_toSMF(t *testing.T) {
 		args args
 		want []byte
 	}{
-		{name: "normal", args: args{mml: "cde"}},
+		{name: "normal", args: args{mml: "cde"}, want: []byte{
+			0x00, 0x90, 0x24, 0x64,
+			0x78, 0x00, 0x80, 0x24, 0x00,
+			0x00, 0x90, 0x26, 0x64,
+			0x78, 0x00, 0x80, 0x26, 0x00,
+			0x00, 0x90, 0x28, 0x64,
+			0x78, 0x00, 0x80, 0x28, 0x00,
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mm := &MDMML{
 				divisions: 960,
 			}
-			got := mm.toSMF(tt.args.mml)
+			got := mm.toSMF(tt.args.mml, 0)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_tempoMs(t *testing.T) {
+	type args struct {
+		t int
+	}
+	tests := []struct {
+		name string
+		args args
+		want int
+	}{
+		{name: "bpm120", args: args{t: 120}, want: 500000},
+		{name: "bpm140", args: args{t: 140}, want: 428571},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tempoMs(tt.args.t); got != tt.want {
+				t.Errorf("tempoMs() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
