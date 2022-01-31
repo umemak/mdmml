@@ -153,32 +153,33 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 		0x4D, 0x54, 0x68, 0x64, // "MThd"
 		0x00, 0x00, 0x00, 0x06, // Length
 		0x00, 0x01, // Format
-		0x00, 0x03, // Tracks
-		0x03, 0xC0, // Divisions(960)
 	}
+	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...) // Tracks
+	mm.header = append(mm.header, itofb(mm.divisions, 2)...)     // Divisions
+
 	mm.Conductor = Track{
 		name: "Conductor",
 		smf: []byte{
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
 			0x00, 0x00, 0x00, 0x17, // Length
 			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x51, 0x03, 0x06, 0x8A, 0x1B, // Tempo 140
-			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
+			0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // Tempo 120
+			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // Rhythm 4/4
 			0x00, 0xFF, 0x2F, 0x00, // EOT
 		},
 	}
 	return mm
 }
 
-func (mm *MDMML) toSMF(mml string, port int) []byte {
-	notes := []byte{}
+func (mm *MDMML) toSMF(mml string, ch int) []byte {
+	events := []byte{}
 	oct := 4
 	vel := 100
 	defL := 8
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
 		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") { // note
-			notes = append(notes, mm.noteOnOff(oct, s, vel, defL)...)
+			events = append(events, mm.noteOnOff(oct, s, vel, defL)...)
 		} else if s == "o" || s == "O" { // octave
 			i++
 			o, l := num(string(mml[i]))
@@ -203,7 +204,7 @@ func (mm *MDMML) toSMF(mml string, port int) []byte {
 			if l > 0 {
 				i = i + l
 			}
-			notes = append(notes, mm.programChange(o)...)
+			events = append(events, mm.programChange(o)...)
 		} else if s == "v" { // velocity
 			i++
 			o, l := num(string(mml[i]))
@@ -213,17 +214,18 @@ func (mm *MDMML) toSMF(mml string, port int) []byte {
 			}
 		}
 	}
-	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                // "MTrk"
-	smf = append(smf, itob(len(notes)+32, 4)...)         // Length
-	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
-	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
-	smf = append(smf, itob(port, 0)...)                  // Port
-	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
-	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
-	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
-	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)       // Program Change
-	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
-	smf = append(smf, notes...)
+	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                      // "MTrk"
+	smf = append(smf, itob(len(events)+32, 4)...)              // Length
+	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...)       // Title
+	smf = append(smf, []byte{0x00, 0xFF, 0x20, 0x01}...)       // Channel
+	smf = append(smf, itob(ch, 0)...)                          // Channel
+	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01, 0x00}...) // Port
+	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...)       // CC#121(Reset)
+	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...)       // CC#0(MSB)
+	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...)       // CC#32(LSB)
+	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)             // Program Change
+	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...)       // CC#7(Volume)
+	smf = append(smf, events...)
 	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
 	return smf
 }
@@ -262,12 +264,12 @@ func (mm *MDMML) noteOnOff(oct int, note string, vel int, len int) []byte {
 }
 
 func (mm *MDMML) programChange(p int) []byte {
-	ret := []byte{}
-	ret = append(ret, []byte{0x00, 0xC0}...)
+	ret := []byte{0x00, 0xC0}
 	ret = append(ret, itob(p, 0)...)
 	return ret
 }
 
+// itob は int を f 桁の可変長バイナリにして返す
 // http://www13.plala.or.jp/kymats/study/MULTIMEDIA/midiStream_format.html
 func itob(i int, f int) []byte {
 	ret := []byte{}
@@ -313,6 +315,57 @@ func itob(i int, f int) []byte {
 		binary.BigEndian.PutUint64(buf, uint64((i>>7)|0x80))
 		ret = append(ret, buf[7:8]...)
 		binary.BigEndian.PutUint64(buf, uint64(i&0x7f))
+		ret = append(ret, buf[7:8]...)
+		return ret
+	}
+	return ret
+}
+
+// itofb は int を f 桁の固定長バイナリにして返す
+func itofb(i int, f int) []byte {
+	ret := []byte{}
+	buf := make([]byte, binary.MaxVarintLen64)
+	if i < 256 {
+		for j := 1; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
+		binary.BigEndian.PutUint64(buf, uint64(i))
+		ret = append(ret, buf[7:8]...)
+		return ret
+	}
+	if i < 65536 {
+		for j := 2; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
+		binary.BigEndian.PutUint64(buf, uint64((i >> 8)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64(i&0xff))
+		ret = append(ret, buf[7:8]...)
+		return ret
+	}
+	if i < 16777216 {
+		for j := 3; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
+		binary.BigEndian.PutUint64(buf, uint64((i >> 16)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64((i >> 8)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64(i&0xff))
+		ret = append(ret, buf[7:8]...)
+		return ret
+	}
+	if i < 4294967296 {
+		for j := 4; j < f; j++ {
+			ret = append(ret, 0x00)
+		}
+		binary.BigEndian.PutUint64(buf, uint64((i >> 24)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64((i >> 16)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64((i >> 8)))
+		ret = append(ret, buf[7:8]...)
+		binary.BigEndian.PutUint64(buf, uint64(i&0xff))
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
