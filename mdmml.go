@@ -20,64 +20,6 @@ type Track struct {
 	smf  []byte
 }
 
-func NewMDMML(src []byte) *MDMML {
-	mm := &MDMML{}
-	mm.header = []byte{
-		0x4D, 0x54, 0x68, 0x64, // "MThd"
-		0x00, 0x00, 0x00, 0x06, // Length
-		0x00, 0x01, // Format
-		0x00, 0x03, // Tracks
-		0x03, 0xC0, // Divisions(960)
-	}
-	mm.Conductor = Track{
-		name: "Conductor",
-		smf: []byte{
-			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0x17, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x51, 0x03, 0x06, 0x8A, 0x1B, // Tempo
-			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
-			0x00, 0xFF, 0x2F, 0x00, // EOT
-		},
-	}
-	mm.Tracks = append(mm.Tracks, Track{
-		name: "A",
-		smf: []byte{
-			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0x2B, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x21, 0x01, 0x00, // port
-			0x00, 0xB0, 0x79, 0x00, // CC#121(Reset)
-			0x00, 0xB0, 0x00, 0x00, // CC#0(MSB)
-			0x00, 0xB0, 0x20, 0x00, // CC#32(LSB)
-			0x00, 0xC0, 0x28, // Program Change
-			0x00, 0xB0, 0x07, 0x64, // CC#7(Volume)
-			0x9E, 0x00, 0x90, 0x3C, 0x64, // Note ON
-			0x9E, 0x00, 0x80, 0x3C, 0x00, // Note OFF
-			0x9E, 0x00, 0xFF, 0x2F, 0x00, //EOT
-		},
-	})
-	mm.Tracks = append(mm.Tracks, Track{
-		name: "B",
-		smf: []byte{
-			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0x29, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x21, 0x01, 0x00, // port
-			0x00, 0xB0, 0x79, 0x00, // CC#121(Reset)
-			0x00, 0xB0, 0x00, 0x00, // CC#0(MSB)
-			0x00, 0xB0, 0x20, 0x00, // CC#32(LSB)
-			0x00, 0xC0, 0x28, // Program Change
-			0x00, 0xB0, 0x07, 0x64, // CC#7(Volume)
-			0x00, 0x90, 0x3E, 0x64, // Note ON
-			0x9E, 0x00, 0x80, 0x3E, 0x00, // Note OFF
-			0x00, 0xFF, 0x2F, 0x00, //EOT
-		},
-	})
-
-	return mm
-}
-
 func (mm *MDMML) SMF() []byte {
 	smf := mm.header
 	smf = append(smf, mm.Conductor.smf...)
@@ -178,8 +120,14 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	defL := 8
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
-		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") { // note
-			events = append(events, mm.noteOnOff(ch, oct, s, vel, defL)...)
+		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") || (s == "r" || s == "R") { // note
+			len := defL
+			o, l := num(string(mml[i+1:]))
+			if l > 0 {
+				i = i + l - 1
+				len = o
+			}
+			events = append(events, mm.noteOnOff(ch, oct, s, vel, len)...)
 		} else if s == "o" || s == "O" { // octave
 			i++
 			o, l := num(string(mml[i:]))
@@ -204,7 +152,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			if l > 0 {
 				i = i + l - 1
 			}
-			events = append(events, mm.programChange(o)...)
+			events = append(events, mm.programChange(ch, o)...)
 		} else if s == "v" { // velocity
 			i++
 			o, l := num(string(mml[i:]))
@@ -215,16 +163,13 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 		}
 	}
 	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                // "MTrk"
-	smf = append(smf, itofb(len(events)+37, 4)...)       // Length
+	smf = append(smf, itofb(len(events)+26, 4)...)       // Length
 	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
 	smf = append(smf, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel
 	smf = append(smf, itob(ch, 0)...)                    // Channel
 	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
 	smf = append(smf, itob(ch, 0)...)                    // Port
 	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
-	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
-	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
-	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)       // Program Change
 	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
 	smf = append(smf, events...)
 	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
@@ -250,8 +195,20 @@ func num(s string) (int, int) {
 
 func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byte {
 	cd := map[string]int{"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
-	n := (oct+1)*12 + cd[note]
 	ret := []byte{}
+	nl := strings.ToLower(note)
+	if nl == "r" {
+		// on
+		ret = append(ret, []byte{0x00}...)
+		ret = append(ret, itofb(0x90+ch, 1)...)
+		ret = append(ret, []byte{0x00, 0x00}...)
+		// off
+		ret = append(ret, itob(mm.lenToTick(len), 0)...)
+		ret = append(ret, itofb(0x80+ch, 1)...)
+		ret = append(ret, []byte{0x00, 0x00}...)
+		return ret
+	}
+	n := (oct+1)*12 + cd[nl]
 	// on
 	ret = append(ret, []byte{0x00}...)
 	ret = append(ret, itofb(0x90+ch, 1)...)
@@ -265,12 +222,22 @@ func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byt
 	return ret
 }
 
-func (mm *MDMML) programChange(p int) []byte {
+func (mm *MDMML) programChange(ch int, p int) []byte {
 	ret := []byte{}
-	ret = append(ret, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
-	ret = append(ret, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
-	ret = append(ret, []byte{0x00, 0xC0}...)
-	ret = append(ret, itob(p, 0)...)
+	ret = append(ret, cc(0, ch, 0, 0)...)    // CC#0(MSB)
+	ret = append(ret, cc(0, ch, 0x20, 0)...) // CC#32(LSB)
+	ret = append(ret, []byte{0x00}...)
+	ret = append(ret, itofb(0xC0+ch, 1)...)
+	ret = append(ret, itob(p-1, 0)...)
+	return ret
+}
+
+func cc(dt, ch, num, val int) []byte {
+	ret := []byte{}
+	ret = append(ret, itob(dt, 0)...)
+	ret = append(ret, itofb(0xB0+ch, 1)...)
+	ret = append(ret, itofb(num, 1)...)
+	ret = append(ret, itofb(val, 1)...)
 	return ret
 }
 
