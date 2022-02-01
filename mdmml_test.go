@@ -109,6 +109,7 @@ func TestMDtoMML(t *testing.T) {
 
 func Test_noteOnOff(t *testing.T) {
 	type args struct {
+		ch   int
 		oct  int
 		note string
 		vel  int
@@ -119,9 +120,9 @@ func Test_noteOnOff(t *testing.T) {
 		args args
 		want []byte
 	}{
-		{name: "v100l8o4c", args: args{oct: 4, note: "c", vel: 100, len: 4}, want: []byte{
-			0x00, 0x90, 0x3c, 0x64, // Note ON
-			0x81, 0x70, 0x00, 0x80, 0x3c, 0x00, // Note OFF
+		{name: "v100l8o4c", args: args{ch: 1, oct: 4, note: "c", vel: 100, len: 4}, want: []byte{
+			0x00, 0x91, 0x3c, 0x64, // Note ON
+			0x87, 0x40, 0x81, 0x3c, 0x00, // Note OFF
 		}},
 	}
 	for _, tt := range tests {
@@ -129,7 +130,7 @@ func Test_noteOnOff(t *testing.T) {
 			mm := &MDMML{
 				divisions: 960,
 			}
-			got := mm.noteOnOff(tt.args.oct, tt.args.note, tt.args.vel, tt.args.len)
+			got := mm.noteOnOff(tt.args.ch, tt.args.oct, tt.args.note, tt.args.vel, tt.args.len)
 			assert.Equal(t, tt.want, got)
 		})
 	}

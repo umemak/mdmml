@@ -179,12 +179,12 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
 		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") { // note
-			events = append(events, mm.noteOnOff(oct, s, vel, defL)...)
+			events = append(events, mm.noteOnOff(ch, oct, s, vel, defL)...)
 		} else if s == "o" || s == "O" { // octave
 			i++
-			o, l := num(string(mml[i]))
+			o, l := num(string(mml[i:]))
 			if l > 0 {
-				i = i + l
+				i = i + l - 1
 				oct = o
 			}
 		} else if s == ">" {
@@ -193,38 +193,39 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			oct--
 		} else if s == "l" || s == "L" { // length
 			i++
-			o, l := num(string(mml[i]))
+			o, l := num(string(mml[i:]))
 			if l > 0 {
-				i = i + l
+				i = i + l - 1
 				defL = o
 			}
 		} else if s == "@" { // program
 			i++
-			o, l := num(string(mml[i]))
+			o, l := num(string(mml[i:]))
 			if l > 0 {
-				i = i + l
+				i = i + l - 1
 			}
 			events = append(events, mm.programChange(o)...)
 		} else if s == "v" { // velocity
 			i++
-			o, l := num(string(mml[i]))
+			o, l := num(string(mml[i:]))
 			if l > 0 {
-				i = i + l
+				i = i + l - 1
 				vel = o
 			}
 		}
 	}
-	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                      // "MTrk"
-	smf = append(smf, itob(len(events)+32, 4)...)              // Length
-	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...)       // Title
-	smf = append(smf, []byte{0x00, 0xFF, 0x20, 0x01}...)       // Channel
-	smf = append(smf, itob(ch, 0)...)                          // Channel
-	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01, 0x00}...) // Port
-	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...)       // CC#121(Reset)
-	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...)       // CC#0(MSB)
-	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...)       // CC#32(LSB)
-	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)             // Program Change
-	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...)       // CC#7(Volume)
+	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                // "MTrk"
+	smf = append(smf, itofb(len(events)+37, 4)...)       // Length
+	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
+	smf = append(smf, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel
+	smf = append(smf, itob(ch, 0)...)                    // Channel
+	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
+	smf = append(smf, itob(ch, 0)...)                    // Port
+	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
+	smf = append(smf, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
+	smf = append(smf, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
+	smf = append(smf, []byte{0x00, 0xC0, 0x00}...)       // Program Change
+	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
 	smf = append(smf, events...)
 	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
 	return smf
@@ -247,24 +248,28 @@ func num(s string) (int, int) {
 	return n, len(ss)
 }
 
-func (mm *MDMML) noteOnOff(oct int, note string, vel int, len int) []byte {
+func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byte {
 	cd := map[string]int{"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
 	n := (oct+1)*12 + cd[note]
 	ret := []byte{}
 	// on
-	ret = append(ret, []byte{0x00, 0x90}...)
-	ret = append(ret, itob(n, 0)...)
-	ret = append(ret, itob(vel, 0)...)
+	ret = append(ret, []byte{0x00}...)
+	ret = append(ret, itofb(0x90+ch, 1)...)
+	ret = append(ret, itofb(n, 1)...)
+	ret = append(ret, itofb(vel, 1)...)
 	// off
 	ret = append(ret, itob(mm.lenToTick(len), 0)...)
-	ret = append(ret, []byte{0x80}...)
-	ret = append(ret, itob(n, 0)...)
+	ret = append(ret, itofb(0x80+ch, 1)...)
+	ret = append(ret, itofb(n, 1)...)
 	ret = append(ret, []byte{0x00}...)
 	return ret
 }
 
 func (mm *MDMML) programChange(p int) []byte {
-	ret := []byte{0x00, 0xC0}
+	ret := []byte{}
+	ret = append(ret, []byte{0x00, 0xB0, 0x00, 0x00}...) // CC#0(MSB)
+	ret = append(ret, []byte{0x00, 0xB0, 0x20, 0x00}...) // CC#32(LSB)
+	ret = append(ret, []byte{0x00, 0xC0}...)
 	ret = append(ret, itob(p, 0)...)
 	return ret
 }
