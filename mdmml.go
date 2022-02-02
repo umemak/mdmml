@@ -121,44 +121,57 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
 		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") || (s == "r" || s == "R") { // note
-			len := defL
-			o, l := num(string(mml[i+1:]))
-			if l > 0 {
-				i = i + l - 1
-				len = o
+			ll := defL
+			if i+1 < len(mml) {
+				if string(mml[i+1]) == "+" || string(mml[i+1]) == "#" {
+					i++
+					s = s + "+"
+				} else if string(mml[i+1]) == "-" {
+					i++
+					s = s + "-"
+				}
+				o, l := num(string(mml[i+1:]))
+				if l > 0 {
+					i = i + l - 1
+					ll = o
+				}
 			}
-			events = append(events, mm.noteOnOff(ch, oct, s, vel, len)...)
+			events = append(events, mm.noteOnOff(ch, oct, s, vel, ll)...)
 		} else if s == "o" || s == "O" { // octave
-			i++
-			o, l := num(string(mml[i:]))
-			if l > 0 {
-				i = i + l - 1
-				oct = o
+			if i+1 < len(mml) {
+				o, l := num(string(mml[i+1:]))
+				if l > 0 {
+					i = i + l
+					oct = o
+				}
 			}
 		} else if s == ">" {
 			oct++
 		} else if s == "<" {
 			oct--
 		} else if s == "l" || s == "L" { // length
-			i++
-			o, l := num(string(mml[i:]))
-			if l > 0 {
-				i = i + l - 1
-				defL = o
+			if i+1 < len(mml) {
+				o, l := num(string(mml[i+1:]))
+				if l > 0 {
+					i = i + l
+					defL = o
+				}
 			}
 		} else if s == "@" { // program
-			i++
-			o, l := num(string(mml[i:]))
-			if l > 0 {
-				i = i + l - 1
+			if i+1 < len(mml) {
+				o, l := num(string(mml[i+1:]))
+				if l > 0 {
+					i = i + l
+				}
+				events = append(events, mm.programChange(ch, o)...)
 			}
-			events = append(events, mm.programChange(ch, o)...)
 		} else if s == "v" { // velocity
-			i++
-			o, l := num(string(mml[i:]))
-			if l > 0 {
-				i = i + l - 1
-				vel = o
+			if i+1 < len(mml) {
+				o, l := num(string(mml[i+1:]))
+				if l > 0 {
+					i = i + l
+					vel = o
+				}
 			}
 		}
 	}
@@ -194,7 +207,15 @@ func num(s string) (int, int) {
 }
 
 func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byte {
-	cd := map[string]int{"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
+	cd := map[string]int{
+		"c-": -1, "c": 0, "c+": 1,
+		"d-": 1, "d": 2, "d+": 3,
+		"e-": 3, "e": 4, "e+": 5,
+		"f-": 4, "f": 5, "f+": 6,
+		"g-": 6, "g": 7, "g+": 8,
+		"a-": 8, "a": 9, "a+": 10,
+		"b-": 10, "b": 11, "b+": 12,
+	}
 	ret := []byte{}
 	nl := strings.ToLower(note)
 	if nl == "r" {
