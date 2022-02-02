@@ -130,16 +130,24 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 					i++
 					s = s + "-"
 				}
-				o, l := num(string(mml[i+1:]))
-				if l > 0 {
-					i = i + l - 1
-					ll = o
+				if i+1 < len(mml) {
+					o, l := num(mml[i+1:])
+					if l > 0 {
+						i = i + l - 1
+						ll = o
+					}
+					if i+1 < len(mml) {
+						if string(mml[i+1]) == "." {
+							i++
+							ll *= 3
+						}
+					}
 				}
 			}
 			events = append(events, mm.noteOnOff(ch, oct, s, vel, ll)...)
 		} else if s == "o" || s == "O" { // octave
 			if i+1 < len(mml) {
-				o, l := num(string(mml[i+1:]))
+				o, l := num(mml[i+1:])
 				if l > 0 {
 					i = i + l
 					oct = o
@@ -151,7 +159,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			oct--
 		} else if s == "l" || s == "L" { // length
 			if i+1 < len(mml) {
-				o, l := num(string(mml[i+1:]))
+				o, l := num(mml[i+1:])
 				if l > 0 {
 					i = i + l
 					defL = o
@@ -159,7 +167,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			}
 		} else if s == "@" { // program
 			if i+1 < len(mml) {
-				o, l := num(string(mml[i+1:]))
+				o, l := num(mml[i+1:])
 				if l > 0 {
 					i = i + l
 				}
@@ -167,10 +175,18 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			}
 		} else if s == "v" { // velocity
 			if i+1 < len(mml) {
-				o, l := num(string(mml[i+1:]))
+				o, l := num(mml[i+1:])
 				if l > 0 {
 					i = i + l
 					vel = o
+				}
+			}
+		} else if s == "$" { // channel
+			if i+1 < len(mml) {
+				o, l := num(mml[i+1:])
+				if l > 0 {
+					i = i + l
+					ch = o - 1
 				}
 			}
 		}
