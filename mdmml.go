@@ -136,10 +136,16 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 						i = i + l - 1
 						ll = o
 					}
-					if i+1 < len(mml) {
-						if string(mml[i+1]) == "." {
-							i++
-							ll *= 3
+					for {
+						if i+1 < len(mml) {
+							if string(mml[i+1]) == "." {
+								i++
+								ll *= 3
+							} else {
+								break
+							}
+						} else {
+							break
 						}
 					}
 				}
