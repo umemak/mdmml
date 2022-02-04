@@ -179,6 +179,23 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				}
 				events = append(events, mm.programChange(ch, o)...)
 			}
+		} else if s == "p" || s == "P" { // pan
+			if i+1 < len(mml) {
+				o, l := num(mml[i+1:])
+				if l > 0 {
+					i = i + l
+				}
+				events = append(events, cc(0, ch, 10, o)...)
+			}
+		} else if s == "t" || s == "T" { // tempo
+			if i+1 < len(mml) {
+				o, l := num(mml[i+1:])
+				if l > 0 {
+					i = i + l
+				}
+				events = append(events, []byte{0x00, 0xff, 0x51, 0x03}...)
+				events = append(events, itofb(tempoMs(o), 3)...)
+			}
 		} else if s == "v" { // velocity
 			if i+1 < len(mml) {
 				o, l := num(mml[i+1:])
