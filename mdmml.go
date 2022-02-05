@@ -58,6 +58,9 @@ func MDtoMML(src []byte) *MDMML {
 			i++
 			i++ // Skip header
 			for ; i < len(lines); i++ {
+				if bytes.HasPrefix(lines[i], []byte(";")) { // Comment
+					continue
+				}
 				items := strings.Split(string(lines[i]), "|")
 				if len(items) < 2 {
 					continue
@@ -122,8 +125,6 @@ type loop struct {
 }
 
 type note struct {
-	oct int
-	s   string
 	num int
 	vel int
 }
