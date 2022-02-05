@@ -121,6 +121,13 @@ type loop struct {
 	count int
 }
 
+type note struct {
+	oct int
+	s   string
+	num int
+	vel int
+}
+
 func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	events := []byte{}
 	oct := 4
@@ -128,9 +135,13 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	defTick := mm.lenToTick(8)
 	loops := []loop{}
 	mml = strings.ToLower(mml)
+	mml = strings.ReplaceAll(mml, " ", "")
 	mml += "   " // インデックス超過対策
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
+		if s == " " {
+			break
+		}
 		if (s >= "a" && s <= "g") || (s == "r") { // note
 			tick := defTick
 			if string(mml[i+1]) == "+" || string(mml[i+1]) == "#" {
@@ -167,6 +178,61 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				tick += tick2
 			}
 			events = append(events, mm.noteOnOff(ch, oct, s, vel, tick)...)
+		} else if s == "{" { // chode
+			cp := strings.Index(mml[i+1:], "}")
+			cmml := mml[i+1:i+cp+1] + "   "
+			i = i + cp + 1
+			notes := []note{}
+			o := oct
+			for j := 0; j < len(cmml); j++ {
+				s := string(cmml[j])
+				if s == " " {
+					break
+				}
+				if string(cmml[j+1]) == "+" || string(cmml[j+1]) == "#" {
+					j++
+					s = s + "+"
+				} else if string(mml[j+1]) == "-" {
+					j++
+					s = s + "-"
+				} else if s == ">" {
+					o++
+					continue
+				} else if s == "<" {
+					o--
+					continue
+				}
+				n := noteNum(o, s)
+				notes = append(notes, note{num: n, vel: vel})
+			}
+			tick := defTick
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				tick = mm.lenToTick(v)
+			}
+			if string(mml[i+1]) == "." {
+				i++
+				tick = int(float64(tick) * 1.5)
+			}
+			for {
+				if string(mml[i+1]) != "^" {
+					break
+				}
+				i++
+				tick2 := 0
+				v, l := num(mml[i+1:])
+				if l > 0 {
+					i = i + l
+					tick2 = mm.lenToTick(v)
+				}
+				if string(mml[i+1]) == "." {
+					i++
+					tick2 = int(float64(tick) * 1.5)
+				}
+				tick += tick2
+			}
+			events = append(events, mm.notesOnOff(ch, notes, tick)...)
 		} else if s == "o" { // octave
 			v, l := num(mml[i+1:])
 			if l > 0 {
@@ -276,6 +342,35 @@ func num(s string) (int, int) {
 }
 
 func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, tick int) []byte {
+	ret := []byte{}
+	if note == "r" {
+		// 無音を再生
+		ret = append(ret, event(0, 0x90+ch, 0, 0)...)    // on
+		ret = append(ret, event(tick, 0x80+ch, 0, 0)...) // off
+		return ret
+	}
+	n := noteNum(oct, note)
+	ret = append(ret, event(0, 0x90+ch, n, vel)...)  // on
+	ret = append(ret, event(tick, 0x80+ch, n, 0)...) // off
+	return ret
+}
+
+func (mm *MDMML) notesOnOff(ch int, notes []note, tick int) []byte {
+	ret := []byte{}
+	for _, n := range notes {
+		ret = append(ret, event(0, 0x90+ch, n.num, n.vel)...) // on
+	}
+	for i, n := range notes {
+		if i == 0 {
+			ret = append(ret, event(tick, 0x80+ch, n.num, 0)...) // off
+		} else {
+			ret = append(ret, event(0, 0x80+ch, n.num, 0)...) // off
+		}
+	}
+	return ret
+}
+
+func noteNum(oct int, note string) int {
 	cd := map[string]int{
 		"c-": -1, "c": 0, "c+": 1,
 		"d-": 1, "d": 2, "d+": 3,
@@ -285,17 +380,10 @@ func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, tick int) []by
 		"a-": 8, "a": 9, "a+": 10,
 		"b-": 10, "b": 11, "b+": 12,
 	}
-	ret := []byte{}
 	if note == "r" {
-		// 無音を再生
-		ret = append(ret, event(0, 0x90+ch, 0, 0)...)    // on
-		ret = append(ret, event(tick, 0x80+ch, 0, 0)...) // off
-		return ret
+		return -1
 	}
-	n := (oct+1)*12 + cd[note]
-	ret = append(ret, event(0, 0x90+ch, n, vel)...)  // on
-	ret = append(ret, event(tick, 0x80+ch, n, 0)...) // off
-	return ret
+	return (oct+1)*12 + cd[note]
 }
 
 func event(dt, ev, n, vel int) []byte {
