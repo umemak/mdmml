@@ -113,11 +113,20 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 	return mm
 }
 
+type loop struct {
+	pos   int
+	oct   int
+	vel   int
+	tick  int
+	count int
+}
+
 func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	events := []byte{}
 	oct := 4
 	vel := 100
 	defTick := mm.lenToTick(8)
+	loops := []loop{}
 	mml = strings.ToLower(mml)
 	mml += "   " // インデックス超過対策
 	for i := 0; i < len(mml); i++ {
@@ -204,6 +213,31 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			if l > 0 {
 				i = i + l
 				ch = v - 1
+			}
+		} else if s == "[" { // loop in
+			loops = append(loops, loop{pos: i, oct: oct, vel: vel, tick: defTick, count: -1})
+			i++
+		} else if s == "]" {
+			v, l := num(mml[i+1:])
+			c := 2
+			if l > 0 {
+				i = i + l
+				c = v
+			}
+			lp := len(loops) - 1
+			if loops[lp].count == -1 {
+				loops[lp].count = c
+			}
+			if loops[lp].count > 0 {
+				loops[lp].count--
+				oct = loops[lp].oct
+				vel = loops[lp].vel
+				defTick = loops[lp].tick
+				i = loops[lp].pos
+			} else {
+				if lp > 0 {
+					loops = loops[:lp-1]
+				}
 			}
 		}
 	}
