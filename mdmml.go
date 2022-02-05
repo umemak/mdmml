@@ -117,114 +117,110 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	events := []byte{}
 	oct := 4
 	vel := 100
-	defL := 8
+	defTick := mm.lenToTick(8)
+	mml = strings.ToLower(mml)
+	mml += "   " // インデックス超過対策
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
-		if (s >= "a" && s <= "g") || (s >= "A" && s <= "G") || (s == "r" || s == "R") { // note
-			ll := defL
-			if i+1 < len(mml) {
-				if string(mml[i+1]) == "+" || string(mml[i+1]) == "#" {
-					i++
-					s = s + "+"
-				} else if string(mml[i+1]) == "-" {
-					i++
-					s = s + "-"
-				}
-				if i+1 < len(mml) {
-					o, l := num(mml[i+1:])
-					if l > 0 {
-						i = i + l - 1
-						ll = o
-					}
-					for {
-						if i+1 < len(mml) {
-							if string(mml[i+1]) == "." {
-								i++
-								ll *= 3
-							} else {
-								break
-							}
-						} else {
-							break
-						}
-					}
-				}
+		if (s >= "a" && s <= "g") || (s == "r") { // note
+			tick := defTick
+			if string(mml[i+1]) == "+" || string(mml[i+1]) == "#" {
+				i++
+				s = s + "+"
+			} else if string(mml[i+1]) == "-" {
+				i++
+				s = s + "-"
 			}
-			events = append(events, mm.noteOnOff(ch, oct, s, vel, ll)...)
-		} else if s == "o" || s == "O" { // octave
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				tick = mm.lenToTick(v)
+			}
+			if string(mml[i+1]) == "." {
+				i++
+				tick = int(float64(tick) * 1.5)
+			}
+			for {
+				if string(mml[i+1]) != "^" {
+					break
+				}
+				i++
+				tick2 := 0
+				v, l := num(mml[i+1:])
 				if l > 0 {
 					i = i + l
-					oct = o
+					tick2 = mm.lenToTick(v)
 				}
+				if string(mml[i+1]) == "." {
+					i++
+					tick2 = int(float64(tick) * 1.5)
+				}
+				tick += tick2
+			}
+			events = append(events, mm.noteOnOff(ch, oct, s, vel, tick)...)
+		} else if s == "o" { // octave
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				oct = v
 			}
 		} else if s == ">" {
 			oct++
 		} else if s == "<" {
 			oct--
-		} else if s == "l" || s == "L" { // length
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-					defL = o
-				}
+		} else if s == "l" { // length
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				defTick = mm.lenToTick(v)
 			}
 		} else if s == "@" { // program
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-				}
-				events = append(events, mm.programChange(ch, o)...)
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
 			}
-		} else if s == "p" || s == "P" { // pan
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-				}
-				events = append(events, cc(0, ch, 10, o)...)
+			events = append(events, mm.programChange(ch, v)...)
+		} else if s == "p" { // pan
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
 			}
-		} else if s == "t" || s == "T" { // tempo
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-				}
-				events = append(events, []byte{0x00, 0xff, 0x51, 0x03}...)
-				events = append(events, itofb(tempoMs(o), 3)...)
+			events = append(events, cc(0, ch, 10, v)...)
+		} else if s == "t" { // tempo
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
 			}
+			events = append(events, []byte{0x00, 0xff, 0x51, 0x03}...)
+			events = append(events, itofb(tempoMs(v), 3)...)
 		} else if s == "v" { // velocity
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-					vel = o
-				}
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				vel = v
 			}
 		} else if s == "$" { // channel
-			if i+1 < len(mml) {
-				o, l := num(mml[i+1:])
-				if l > 0 {
-					i = i + l
-					ch = o - 1
-				}
+			v, l := num(mml[i+1:])
+			if l > 0 {
+				i = i + l
+				ch = v - 1
 			}
 		}
 	}
-	smf := []byte{0x4D, 0x54, 0x72, 0x6B}                // "MTrk"
-	smf = append(smf, itofb(len(events)+26, 4)...)       // Length
-	smf = append(smf, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
-	smf = append(smf, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel
-	smf = append(smf, itob(ch, 0)...)                    // Channel
-	smf = append(smf, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
-	smf = append(smf, itob(ch, 0)...)                    // Port
-	smf = append(smf, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
-	smf = append(smf, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
-	smf = append(smf, events...)
-	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
+	body := []byte{}
+	body = append(body, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
+	body = append(body, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel
+	body = append(body, itob(ch, 0)...)                    // Channel
+	body = append(body, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
+	body = append(body, itob(ch, 0)...)                    // Port
+	body = append(body, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
+	body = append(body, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
+	body = append(body, events...)
+	body = append(body, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
+
+	smf := []byte{0x4D, 0x54, 0x72, 0x6B}     // "MTrk"
+	smf = append(smf, itofb(len(body), 4)...) // Length
+	smf = append(smf, body...)
 	return smf
 }
 
@@ -245,7 +241,7 @@ func num(s string) (int, int) {
 	return n, len(ss)
 }
 
-func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byte {
+func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, tick int) []byte {
 	cd := map[string]int{
 		"c-": -1, "c": 0, "c+": 1,
 		"d-": 1, "d": 2, "d+": 3,
@@ -256,29 +252,24 @@ func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, len int) []byt
 		"b-": 10, "b": 11, "b+": 12,
 	}
 	ret := []byte{}
-	nl := strings.ToLower(note)
-	if nl == "r" {
-		// on
-		ret = append(ret, []byte{0x00}...)
-		ret = append(ret, itofb(0x90+ch, 1)...)
-		ret = append(ret, []byte{0x00, 0x00}...)
-		// off
-		ret = append(ret, itob(mm.lenToTick(len), 0)...)
-		ret = append(ret, itofb(0x80+ch, 1)...)
-		ret = append(ret, []byte{0x00, 0x00}...)
+	if note == "r" {
+		// 無音を再生
+		ret = append(ret, event(0, 0x90+ch, 0, 0)...)    // on
+		ret = append(ret, event(tick, 0x80+ch, 0, 0)...) // off
 		return ret
 	}
-	n := (oct+1)*12 + cd[nl]
-	// on
-	ret = append(ret, []byte{0x00}...)
-	ret = append(ret, itofb(0x90+ch, 1)...)
+	n := (oct+1)*12 + cd[note]
+	ret = append(ret, event(0, 0x90+ch, n, vel)...)  // on
+	ret = append(ret, event(tick, 0x80+ch, n, 0)...) // off
+	return ret
+}
+
+func event(dt, ev, n, vel int) []byte {
+	ret := []byte{}
+	ret = append(ret, itob(dt, 0)...)
+	ret = append(ret, itofb(ev, 1)...)
 	ret = append(ret, itofb(n, 1)...)
 	ret = append(ret, itofb(vel, 1)...)
-	// off
-	ret = append(ret, itob(mm.lenToTick(len), 0)...)
-	ret = append(ret, itofb(0x80+ch, 1)...)
-	ret = append(ret, itofb(n, 1)...)
-	ret = append(ret, []byte{0x00}...)
 	return ret
 }
 
