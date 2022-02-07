@@ -9,6 +9,8 @@ import (
 
 type MDMML struct {
 	divisions int
+	title     string
+	tempo     int
 	header    []byte
 	Conductor Track
 	Tracks    []Track
@@ -30,7 +32,10 @@ func (mm *MDMML) SMF() []byte {
 }
 
 func MDtoMML(src []byte) *MDMML {
-	mm := &MDMML{divisions: 960}
+	mm := &MDMML{
+		divisions: 960,
+		tempo:     120,
+	}
 	lines := bytes.Split(src, []byte("\n"))
 	for i := 0; i < len(lines); i++ {
 		if string(lines[i]) == "---" { // Front Matter
@@ -47,10 +52,20 @@ func MDtoMML(src []byte) *MDMML {
 				}
 				if items[0] == "Divisions" {
 					divisions, err := strconv.Atoi(items[1])
-					mm.divisions = divisions
 					if err != nil {
-						mm.divisions = 960
+						divisions = 960
 					}
+					mm.divisions = divisions
+				}
+				if items[0] == "Tempo" {
+					tempo, err := strconv.Atoi(items[1])
+					if err != nil {
+						tempo = 120
+					}
+					mm.tempo = tempo
+				}
+				if items[0] == "Title" {
+					mm.title = items[1]
 				}
 			}
 		}
@@ -102,16 +117,20 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...) // Tracks
 	mm.header = append(mm.header, itofb(mm.divisions, 2)...)     // Divisions
 
+	title := []byte{0x00, 0xff, 0x03}
+	title = append(title, itofb(len(mm.title), 1)...)
+	title = append(title, []byte(mm.title)...)
+	tempo := []byte{0x00, 0xff, 0x51, 0x03}
+	tempo = append(tempo, itofb(mm.tempo, 3)...)
+	smf := []byte{0x4D, 0x54, 0x72, 0x6B} // "MTrk"
+	smf = append(smf, itofb(len(title)+len(tempo)+12, 4)...)
+	smf = append(smf, title...)
+	smf = append(smf, tempo...)
+	smf = append(smf, []byte{0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08}...) // Rhythm 4/4
+	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...)                         // EOT
 	mm.Conductor = Track{
 		name: "Conductor",
-		smf: []byte{
-			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0x17, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
-			0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // Tempo 120
-			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // Rhythm 4/4
-			0x00, 0xFF, 0x2F, 0x00, // EOT
-		},
+		smf:  smf,
 	}
 	return mm
 }
@@ -281,10 +300,10 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				i = i + l
 				ch = v - 1
 			}
-		} else if s == "[" { // loop in
+		} else if s == "[" { // loop begin
 			loops = append(loops, loop{pos: i, oct: oct, vel: vel, tick: defTick, count: -1})
 			i++
-		} else if s == "]" {
+		} else if s == "]" { // loop end
 			v, l := num(mml[i+1:])
 			c := 2
 			if l > 0 {
