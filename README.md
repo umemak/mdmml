@@ -2,13 +2,18 @@
 
 Markdown | Music Macro Language
 
+A library to convert MML written in Markdown to SMF.
+
 ## Usage
 
-$ go run cmd/mdmml/main.go testdata/demo.md | timidity -
+$ go run cmd/mdmml/main.go testdata/demo.md > demo.mid
 
 ## MML
 
-| 記号 | 意味 | 備考 |
+- The first column of the table will be the part name; the second and subsequent columns should contain the MML.
+- Lines with the same part name will be played in order from the top.
+
+| symbol | 意味 | 備考 |
 | --- | --- | --- |
 | cdefgab | 音階 |  |
 | +, # | 半音上げ | 音階の直後に書く |
