@@ -214,7 +214,9 @@ func TestMDMML_lenToTick(t *testing.T) {
 
 func Test_num(t *testing.T) {
 	type args struct {
-		s string
+		s   string
+		min int
+		max int
 	}
 	tests := []struct {
 		name  string
@@ -222,12 +224,14 @@ func Test_num(t *testing.T) {
 		want  int
 		want1 int
 	}{
-		{name: "1桁", args: args{s: "1a"}, want: 1, want1: 1},
-		{name: "2桁", args: args{s: "12a"}, want: 12, want1: 2},
+		{name: "1桁", args: args{s: "1a", min: 1, max: 10}, want: 1, want1: 1},
+		{name: "2桁", args: args{s: "12a", min: 1, max: 15}, want: 12, want1: 2},
+		{name: "min", args: args{s: "12a", min: 20, max: 30}, want: 20, want1: 2},
+		{name: "max", args: args{s: "12a", min: 1, max: 10}, want: 10, want1: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := num(tt.args.s)
+			got, got1 := num(tt.args.s, tt.args.min, tt.args.max)
 			if got != tt.want {
 				t.Errorf("num() got = %v, want %v", got, tt.want)
 			}

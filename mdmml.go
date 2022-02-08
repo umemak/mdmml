@@ -121,7 +121,7 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 	title = append(title, itofb(len(mm.title), 1)...)
 	title = append(title, []byte(mm.title)...)
 	tempo := []byte{0x00, 0xff, 0x51, 0x03}
-	tempo = append(tempo, itofb(mm.tempo, 3)...)
+	tempo = append(tempo, itofb(tempoMs(mm.tempo), 3)...)
 	smf := []byte{0x4D, 0x54, 0x72, 0x6B} // "MTrk"
 	smf = append(smf, itofb(len(title)+len(tempo)+12, 4)...)
 	smf = append(smf, title...)
@@ -171,7 +171,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				i++
 				s = s + "-"
 			}
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, mm.divisions)
 			if l > 0 {
 				i = i + l
 				tick = mm.lenToTick(v)
@@ -186,7 +186,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				}
 				i++
 				tick2 := 0
-				v, l := num(mml[i+1:])
+				v, l := num(mml[i+1:], 1, mm.divisions)
 				if l > 0 {
 					i = i + l
 					tick2 = mm.lenToTick(v)
@@ -226,7 +226,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				notes = append(notes, note{num: n, vel: vel})
 			}
 			tick := defTick
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, mm.divisions)
 			if l > 0 {
 				i = i + l
 				tick = mm.lenToTick(v)
@@ -241,7 +241,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 				}
 				i++
 				tick2 := 0
-				v, l := num(mml[i+1:])
+				v, l := num(mml[i+1:], 1, mm.divisions)
 				if l > 0 {
 					i = i + l
 					tick2 = mm.lenToTick(v)
@@ -254,7 +254,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			}
 			events = append(events, mm.notesOnOff(ch, notes, tick)...)
 		} else if s == "o" { // octave
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, 8)
 			if l > 0 {
 				i = i + l
 				oct = v
@@ -264,38 +264,38 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 		} else if s == "<" {
 			oct--
 		} else if s == "l" { // length
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, mm.divisions)
 			if l > 0 {
 				i = i + l
 				defTick = mm.lenToTick(v)
 			}
 		} else if s == "@" { // program
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, 128)
 			if l > 0 {
 				i = i + l
 			}
 			events = append(events, mm.programChange(ch, v)...)
 		} else if s == "p" { // pan
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 0, 127)
 			if l > 0 {
 				i = i + l
 			}
 			events = append(events, cc(0, ch, 10, v)...)
 		} else if s == "t" { // tempo
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, 960)
 			if l > 0 {
 				i = i + l
 			}
 			events = append(events, []byte{0x00, 0xff, 0x51, 0x03}...)
 			events = append(events, itofb(tempoMs(v), 3)...)
 		} else if s == "v" { // velocity
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 0, 127)
 			if l > 0 {
 				i = i + l
 				vel = v
 			}
 		} else if s == "$" { // channel
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, 16)
 			if l > 0 {
 				i = i + l
 				ch = v - 1
@@ -304,7 +304,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			loops = append(loops, loop{pos: i, oct: oct, vel: vel, tick: defTick, count: -1})
 			i++
 		} else if s == "]" { // loop end
-			v, l := num(mml[i+1:])
+			v, l := num(mml[i+1:], 1, 128)
 			c := 2
 			if l > 0 {
 				i = i + l
@@ -344,7 +344,7 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 	return smf
 }
 
-func num(s string) (int, int) {
+func num(s string, min, max int) (int, int) {
 	ss := ""
 	for _, v := range s {
 		j := string(v)
@@ -357,6 +357,12 @@ func num(s string) (int, int) {
 	n, err := strconv.Atoi(ss)
 	if err != nil {
 		return 0, 0
+	}
+	if n < min {
+		n = min
+	}
+	if n > max {
+		n = max
 	}
 	return n, len(ss)
 }
