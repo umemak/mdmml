@@ -8,12 +8,18 @@ import (
 )
 
 type MDMML struct {
-	divisions int
-	title     string
-	tempo     int
-	header    []byte
-	Conductor Track
-	Tracks    []Track
+	divisions    int
+	title        string
+	tempo        int
+	header       []byte
+	SectionOrder []string
+	Sections     []Section
+	Conductor    Track
+}
+
+type Section struct {
+	name   string
+	Tracks []Track
 }
 
 type Track struct {
@@ -25,10 +31,22 @@ type Track struct {
 func (mm *MDMML) SMF() []byte {
 	smf := mm.header
 	smf = append(smf, mm.Conductor.smf...)
-	for _, v := range mm.Tracks {
-		smf = append(smf, v.smf...)
+	for _, o := range mm.SectionOrder {
+		s := mm.Section(o)
+		for _, v := range s.Tracks {
+			smf = append(smf, v.smf...)
+		}
 	}
 	return smf
+}
+
+func (m *MDMML) Section(o string) *Section {
+	for _, v := range m.Sections {
+		if v.name == o {
+			return &v
+		}
+	}
+	return &Section{}
 }
 
 func MDtoMML(src []byte) *MDMML {
@@ -37,8 +55,10 @@ func MDtoMML(src []byte) *MDMML {
 		tempo:     120,
 	}
 	lines := bytes.Split(src, []byte("\n"))
+	readFrontMatter := false
 	for i := 0; i < len(lines); i++ {
-		if string(lines[i]) == "---" { // Front Matter
+		if string(lines[i]) == "---" && !readFrontMatter { // Front Matter
+			readFrontMatter = true
 			i++
 			for ; i < len(lines); i++ {
 				if string(lines[i]) == "---" {
@@ -65,10 +85,38 @@ func MDtoMML(src []byte) *MDMML {
 					mm.tempo = tempo
 				}
 				if items[0] == "Title" {
-					mm.title = items[1]
+					mm.title = strings.TrimSpace(items[1])
 				}
 			}
 		}
+		secName := ""
+		if bytes.HasPrefix(lines[i], []byte("## ")) { // Section
+			items := strings.Split(string(lines[i]), " ")
+			if len(items) > 2 {
+				secName = strings.Join(items[1:], " ")
+			} else {
+				secName = items[1]
+			}
+			secName = strings.TrimSpace(secName)
+			if secName == "Order" {
+				for ; i < len(lines); i++ {
+					if bytes.HasPrefix(lines[i], []byte("## ")) { // Next Section
+						break
+					}
+					if bytes.HasPrefix(lines[i], []byte("- ")) {
+						sn := ""
+						items := strings.Split(string(lines[i]), " ")
+						if len(items) > 2 {
+							sn = strings.Join(items[1:], " ")
+						} else {
+							sn = items[1]
+						}
+						mm.SectionOrder = append(mm.SectionOrder, sn)
+					}
+				}
+			}
+		}
+		s := Section{name: secName}
 		if bytes.HasPrefix(lines[i], []byte("|")) { // Table
 			i++
 			i++ // Skip header
@@ -86,36 +134,39 @@ func MDtoMML(src []byte) *MDMML {
 					mml += strings.Trim(ii, " ")
 				}
 				found := false
-				for i, v := range mm.Tracks {
+				for i, v := range s.Tracks {
 					if v.name == name {
-						mm.Tracks[i].mml += mml
+						s.Tracks[i].mml += mml
 						found = true
 						break
 					}
 				}
 				if !found {
-					mm.Tracks = append(mm.Tracks, Track{
+					s.Tracks = append(s.Tracks, Track{
 						name: name,
 						mml:  mml,
 					})
 				}
 			}
 		}
+		mm.Sections = append(mm.Sections, s)
 	}
 	return mm
 }
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
-	for i, t := range mm.Tracks {
-		mm.Tracks[i].smf = mm.toSMF(t.mml, i)
+	for _, s := range mm.Sections {
+		for i, t := range s.Tracks {
+			s.Tracks[i].smf = mm.toSMF(t.mml, i)
+		}
 	}
 	mm.header = []byte{
 		0x4D, 0x54, 0x68, 0x64, // "MThd"
 		0x00, 0x00, 0x00, 0x06, // Length
 		0x00, 0x01, // Format
 	}
-	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...) // Tracks
-	mm.header = append(mm.header, itofb(mm.divisions, 2)...)     // Divisions
+	mm.header = append(mm.header, itofb(len(mm.Sections[0].Tracks)+1, 2)...) // Tracks
+	mm.header = append(mm.header, itofb(mm.divisions, 2)...)                 // Divisions
 
 	title := []byte{0x00, 0xff, 0x03}
 	title = append(title, itofb(len(mm.title), 1)...)

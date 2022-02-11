@@ -102,10 +102,18 @@ func TestMDtoMML(t *testing.T) {
 		want     *MDMML
 	}{
 		{name: "normal", filename: "./testdata/test.md", want: &MDMML{
-			divisions: 960,
-			Tracks: []Track{
-				{name: "A", mml: "@10cdefgab>cc<bagfedc"},
-				{name: "B", mml: "@20efgab>cdeedc<bagfe"},
+			title:        "テスト",
+			tempo:        120,
+			divisions:    960,
+			SectionOrder: []string{"A"},
+			Sections: []Section{
+				{
+					name: "A",
+					Tracks: []Track{
+						{name: "A", mml: "@10cdefgab>cc<bagfedc"},
+						{name: "B", mml: "@20efgab>cdeedc<bagfe"},
+					},
+				},
 			},
 		}},
 	}
@@ -204,7 +212,6 @@ func TestMDMML_lenToTick(t *testing.T) {
 				divisions: tt.fields.divisions,
 				header:    tt.fields.header,
 				Conductor: tt.fields.Conductor,
-				Tracks:    tt.fields.Tracks,
 			}
 			got := mm.lenToTick(tt.args.len)
 			assert.Equal(t, tt.want, got)
