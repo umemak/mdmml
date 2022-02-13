@@ -3,8 +3,15 @@ package mdmml
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 type MDMML struct {
@@ -54,6 +61,11 @@ func MDtoMML(src []byte) *MDMML {
 		divisions: 960,
 		tempo:     120,
 	}
+	doc, err := mdToDoc(src)
+	if err != nil {
+		return nil
+	}
+	mm.title = doc.Find("h1").Text()
 	lines := bytes.Split(src, []byte("\n"))
 	readFrontMatter := false
 	for i := 0; i < len(lines); i++ {
@@ -600,4 +612,26 @@ func (mm *MDMML) lenToTick(len int) int {
 
 func tempoMs(t int) int {
 	return 60 * 1000 * 1000 / t
+}
+
+func mdToDoc(src []byte) (*goquery.Document, error) {
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithHardWraps(),
+			html.WithXHTML(),
+		),
+	)
+	var buf bytes.Buffer
+	if err := md.Convert(src, &buf); err != nil {
+		return nil, fmt.Errorf("Convert: %w", err)
+	}
+	doc, err := goquery.NewDocumentFromReader(&buf)
+	if err != nil {
+		return nil, fmt.Errorf("NewDocumentFromReader: %w", err)
+	}
+	return doc, nil
 }
