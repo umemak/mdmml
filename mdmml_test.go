@@ -103,9 +103,11 @@ func TestMDtoMML(t *testing.T) {
 	}{
 		{name: "normal", filename: "./testdata/test.md", want: &MDMML{
 			divisions: 960,
+			title:     "テスト",
+			tempo:     120,
 			Tracks: []Track{
-				{name: "A", mml: "@10cdefgab>cc<bagfedc"},
-				{name: "B", mml: "@20efgab>cdeedc<bagfe"},
+				{name: "A", mmls: []string{"@10cdef", "gab>c", "c<bag", "fedc"}},
+				{name: "B", mmls: []string{"@20efga", "b>cde", "edc<b", "agfe"}},
 			},
 		}},
 	}

@@ -18,7 +18,7 @@ type MDMML struct {
 
 type Track struct {
 	name string
-	mml  string
+	mmls []string
 	smf  []byte
 }
 
@@ -65,7 +65,7 @@ func MDtoMML(src []byte) *MDMML {
 					mm.tempo = tempo
 				}
 				if items[0] == "Title" {
-					mm.title = items[1]
+					mm.title = strings.TrimSpace(items[1])
 				}
 			}
 		}
@@ -73,6 +73,9 @@ func MDtoMML(src []byte) *MDMML {
 			i++
 			i++ // Skip header
 			for ; i < len(lines); i++ {
+				if strings.TrimSpace(string(lines[i])) == "" {
+					break
+				}
 				if bytes.HasPrefix(lines[i], []byte(";")) { // Comment
 					continue
 				}
@@ -81,14 +84,14 @@ func MDtoMML(src []byte) *MDMML {
 					continue
 				}
 				name := strings.Trim(items[1], " ")
-				mml := ""
-				for _, ii := range items[2:] {
-					mml += strings.Trim(ii, " ")
+				mmls := []string{}
+				for _, ii := range items[2 : len(items)-1] {
+					mmls = append(mmls, strings.Trim(ii, " "))
 				}
 				found := false
 				for i, v := range mm.Tracks {
 					if v.name == name {
-						mm.Tracks[i].mml += mml
+						mm.Tracks[i].mmls = append(mm.Tracks[i].mmls, mmls...)
 						found = true
 						break
 					}
@@ -96,7 +99,7 @@ func MDtoMML(src []byte) *MDMML {
 				if !found {
 					mm.Tracks = append(mm.Tracks, Track{
 						name: name,
-						mml:  mml,
+						mmls: mmls,
 					})
 				}
 			}
@@ -107,7 +110,7 @@ func MDtoMML(src []byte) *MDMML {
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
 	for i, t := range mm.Tracks {
-		mm.Tracks[i].smf = mm.toSMF(t.mml, i)
+		mm.Tracks[i].smf = mm.toSMF(strings.Join(t.mmls, ""), i)
 	}
 	mm.header = []byte{
 		0x4D, 0x54, 0x68, 0x64, // "MThd"
