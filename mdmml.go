@@ -32,7 +32,14 @@ type Section struct {
 type Track struct {
 	name string
 	mml  string
+	mmls []string
 	smf  []byte
+}
+
+type measure struct {
+	num  int
+	name string
+	tick int
 }
 
 func (mm *MDMML) SMF() []byte {
@@ -56,6 +63,29 @@ func (m *MDMML) Section(o string) *Section {
 	return &Section{}
 }
 
+func mdToDoc(src []byte) (*goquery.Document, error) {
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithHardWraps(),
+			html.WithXHTML(),
+		),
+	)
+	var buf bytes.Buffer
+	if err := md.Convert(src, &buf); err != nil {
+		return nil, fmt.Errorf("md.Convert: %w", err)
+	}
+	fmt.Println(buf.String())
+	doc, err := goquery.NewDocumentFromReader(&buf)
+	if err != nil {
+		return nil, fmt.Errorf("NewDocumentFromReader: %w", err)
+	}
+	return doc, nil
+}
+
 func MDtoMML(src []byte) *MDMML {
 	mm := &MDMML{
 		divisions: 960,
@@ -66,6 +96,17 @@ func MDtoMML(src []byte) *MDMML {
 		return nil
 	}
 	mm.title = doc.Find("h1").Text()
+	doc.Find("ul").Find("li").Each(func(i int, s *goquery.Selection) {
+		mm.SectionOrder = append(mm.SectionOrder, s.Text())
+	})
+	doc.Find("table").Each(func(i int, s *goquery.Selection) {
+		s.Find("th").Each(func(j int, ss *goquery.Selection) {
+			fmt.Printf("%s:%s\n", s.Text(), ss.Text())
+		})
+	})
+	doc.Find("td").Each(func(i int, s *goquery.Selection) {
+		fmt.Println(s.Text())
+	})
 	lines := bytes.Split(src, []byte("\n"))
 	readFrontMatter := false
 	for i := 0; i < len(lines); i++ {
@@ -149,6 +190,7 @@ func MDtoMML(src []byte) *MDMML {
 				for i, v := range s.Tracks {
 					if v.name == name {
 						s.Tracks[i].mml += mml
+						s.Tracks[i].mmls = append(s.Tracks[i].mmls, items[2:]...)
 						found = true
 						break
 					}
@@ -157,6 +199,7 @@ func MDtoMML(src []byte) *MDMML {
 					s.Tracks = append(s.Tracks, Track{
 						name: name,
 						mml:  mml,
+						mmls: items[2:],
 					})
 				}
 			}
@@ -612,26 +655,4 @@ func (mm *MDMML) lenToTick(len int) int {
 
 func tempoMs(t int) int {
 	return 60 * 1000 * 1000 / t
-}
-
-func mdToDoc(src []byte) (*goquery.Document, error) {
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-		),
-		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
-			html.WithXHTML(),
-		),
-	)
-	var buf bytes.Buffer
-	if err := md.Convert(src, &buf); err != nil {
-		return nil, fmt.Errorf("Convert: %w", err)
-	}
-	doc, err := goquery.NewDocumentFromReader(&buf)
-	if err != nil {
-		return nil, fmt.Errorf("NewDocumentFromReader: %w", err)
-	}
-	return doc, nil
 }
