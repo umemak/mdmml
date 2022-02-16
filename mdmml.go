@@ -110,7 +110,8 @@ func MDtoMML(src []byte) *MDMML {
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
 	for i, t := range mm.Tracks {
-		mm.Tracks[i].smf = mm.toSMF(strings.Join(t.mmls, ""), i)
+		events := mm.toEvents(strings.Join(t.mmls, ""), i)
+		mm.Tracks[i].smf = buildSMF(events, i)
 	}
 	mm.header = []byte{
 		0x4D, 0x54, 0x68, 0x64, // "MThd"
@@ -151,7 +152,7 @@ type note struct {
 	vel int
 }
 
-func (mm *MDMML) toSMF(mml string, ch int) []byte {
+func (mm *MDMML) toEvents(mml string, ch int) []byte {
 	events := []byte{}
 	oct := 4
 	vel := 100
@@ -330,6 +331,10 @@ func (mm *MDMML) toSMF(mml string, ch int) []byte {
 			}
 		}
 	}
+	return events
+}
+
+func buildSMF(events []byte, ch int) []byte {
 	body := []byte{}
 	body = append(body, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
 	body = append(body, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel

@@ -22,8 +22,8 @@ func TestMDMML_SMF(t *testing.T) {
 			0x03, 0xC0, // Divisions(960)
 			// Conductor
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0x17, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
+			0x00, 0x00, 0x00, 0x20, // Length
+			0x00, 0xFF, 0x03, 0x09, 0xe3, 0x83, 0x86, 0xe3, 0x82, 0xb9, 0xe3, 0x83, 0x88, // Title
 			0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // Tempo
 			0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
 			0x00, 0xFF, 0x2F, 0x00, // EOT
@@ -144,7 +144,7 @@ func Test_noteOnOff(t *testing.T) {
 			mm := &MDMML{
 				divisions: 960,
 			}
-			got := mm.noteOnOff(tt.args.ch, tt.args.oct, tt.args.note, tt.args.vel, tt.args.len)
+			got := mm.noteOnOff(tt.args.ch, tt.args.oct, tt.args.note, tt.args.vel, mm.lenToTick(tt.args.len))
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -344,7 +344,8 @@ func TestMDMML_toSMF(t *testing.T) {
 			mm := &MDMML{
 				divisions: 960,
 			}
-			got := mm.toSMF(tt.args.mml, 0)
+			events := mm.toEvents(tt.args.mml, 0)
+			got := buildSMF(events, 0)
 			assert.Equal(t, tt.want, got)
 		})
 	}
