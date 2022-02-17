@@ -9,7 +9,7 @@ jobs:
       - name: setup
         uses: actions/setup-go@v2
         with:
-          go-gersion: 1.x
+          go-version: ^1.17
       - name: checkout
         uses: actions/checkout@v2
       - name: cache
