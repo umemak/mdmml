@@ -1,0 +1,44 @@
+name: ci
+
+on: [push]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: setup
+        uses: actions/setup-go@v2
+        with:
+          go-gersion: 1.x
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: cache
+        uses: actions/cache@v2.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: build
+        run: go build ./...
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: test
+        run: go test ./... -v
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.29
