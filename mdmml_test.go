@@ -121,7 +121,7 @@ func TestMDtoMML(t *testing.T) {
 	}
 }
 
-func Test_noteOnOff(t *testing.T) {
+func TestMDMML_noteOnOff(t *testing.T) {
 	type args struct {
 		ch   int
 		oct  int
@@ -368,6 +368,281 @@ func Test_tempoMs(t *testing.T) {
 			if got := tempoMs(tt.args.t); got != tt.want {
 				t.Errorf("tempoMs() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestMDMML_MMLtoSMF(t *testing.T) {
+	type fields struct {
+		divisions int
+		title     string
+		tempo     int
+		header    []byte
+		Conductor Track
+		Tracks    []Track
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   *MDMML
+	}{
+		{name: "default", want: &MDMML{
+			divisions: 0, title: "", tempo: 0,
+			header: []uint8{
+				0x4d, 0x54, 0x68, 0x64,
+				0x0, 0x0, 0x0, 0x6,
+				0x0, 0x1, 0x0, 0x1, 0x0, 0x0,
+			},
+			Conductor: Track{name: "Conductor", mmls: []string(nil),
+				smf: []uint8{
+					0x4d, 0x54, 0x72, 0x6b,
+					0x0, 0x0, 0x0, 0x17,
+					0x0, 0xff, 0x3, 0x0,
+					0x0, 0xff, 0x51, 0x3, 0x0, 0x0, 0x0,
+					0x0, 0xff, 0x58, 0x4, 0x4, 0x2, 0x18, 0x8,
+					0x0, 0xff, 0x2f, 0x0,
+				}},
+			Tracks: []Track(nil)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: tt.fields.divisions,
+				title:     tt.fields.title,
+				tempo:     tt.fields.tempo,
+				header:    tt.fields.header,
+				Conductor: tt.fields.Conductor,
+				Tracks:    tt.fields.Tracks,
+			}
+			got := mm.MMLtoSMF()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMDMML_toEvents(t *testing.T) {
+	type fields struct {
+		divisions int
+		title     string
+		tempo     int
+		header    []byte
+		Conductor Track
+		Tracks    []Track
+	}
+	type args struct {
+		mml string
+		ch  int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   []byte
+	}{
+		{name: "default", want: []byte{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: tt.fields.divisions,
+				title:     tt.fields.title,
+				tempo:     tt.fields.tempo,
+				header:    tt.fields.header,
+				Conductor: tt.fields.Conductor,
+				Tracks:    tt.fields.Tracks,
+			}
+			got := mm.toEvents(tt.args.mml, tt.args.ch)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_buildSMF(t *testing.T) {
+	type args struct {
+		events []byte
+		ch     int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "default", want: []byte{
+			0x4d, 0x54, 0x72, 0x6b,
+			0x0, 0x0, 0x0, 0x1a,
+			0x0, 0xff, 0x3, 0x0,
+			0x0, 0xff, 0x20, 0x1, 0x0,
+			0x0, 0xff, 0x21, 0x1, 0x0,
+			0x0, 0xb0, 0x79, 0x0,
+			0x0, 0xb0, 0x7, 0x64,
+			0x0, 0xff, 0x2f, 0x0,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildSMF(tt.args.events, tt.args.ch)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMDMML_notesOnOff(t *testing.T) {
+	type fields struct {
+		divisions int
+		title     string
+		tempo     int
+		header    []byte
+		Conductor Track
+		Tracks    []Track
+	}
+	type args struct {
+		ch    int
+		notes []note
+		tick  int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   []byte
+	}{
+		{name: "default", want: []byte{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: tt.fields.divisions,
+				title:     tt.fields.title,
+				tempo:     tt.fields.tempo,
+				header:    tt.fields.header,
+				Conductor: tt.fields.Conductor,
+				Tracks:    tt.fields.Tracks,
+			}
+			got := mm.notesOnOff(tt.args.ch, tt.args.notes, tt.args.tick)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_noteNum(t *testing.T) {
+	type args struct {
+		oct  int
+		note string
+	}
+	tests := []struct {
+		name string
+		args args
+		want int
+	}{
+		{name: "default"},
+		{name: "o4c", args: args{oct: 4, note: "c"}, want: 60},
+		{name: "rest", args: args{oct: 4, note: "r"}, want: -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := noteNum(tt.args.oct, tt.args.note)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_event(t *testing.T) {
+	type args struct {
+		dt  int
+		ev  int
+		n   int
+		vel int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "default", want: []byte{0x0, 0x0, 0x0, 0x0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := event(tt.args.dt, tt.args.ev, tt.args.n, tt.args.vel)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMDMML_programChange(t *testing.T) {
+	type fields struct {
+		divisions int
+		title     string
+		tempo     int
+		header    []byte
+		Conductor Track
+		Tracks    []Track
+	}
+	type args struct {
+		ch int
+		p  int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   []byte
+	}{
+		{name: "default", want: []byte{0x0, 0xb0, 0x0, 0x0, 0x0, 0xb0, 0x20, 0x0, 0x0, 0xc0, 0xff}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := &MDMML{
+				divisions: tt.fields.divisions,
+				title:     tt.fields.title,
+				tempo:     tt.fields.tempo,
+				header:    tt.fields.header,
+				Conductor: tt.fields.Conductor,
+				Tracks:    tt.fields.Tracks,
+			}
+			got := mm.programChange(tt.args.ch, tt.args.p)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_cc(t *testing.T) {
+	type args struct {
+		dt  int
+		ch  int
+		num int
+		val int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "default", want: []byte{0x0, 0xb0, 0x0, 0x0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cc(tt.args.dt, tt.args.ch, tt.args.num, tt.args.val)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_itofb(t *testing.T) {
+	type args struct {
+		i int
+		f int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "default", want: []byte{0x0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := itofb(tt.args.i, tt.args.f)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

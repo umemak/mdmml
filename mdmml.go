@@ -417,7 +417,11 @@ func noteNum(oct int, note string) int {
 	if note == "r" {
 		return -1
 	}
-	return (oct+1)*12 + cd[note]
+	val, ok := cd[note]
+	if !ok {
+		return 0
+	}
+	return (oct+1)*12 + val
 }
 
 func event(dt, ev, n, vel int) []byte {
@@ -556,5 +560,8 @@ func (mm *MDMML) lenToTick(len int) int {
 }
 
 func tempoMs(t int) int {
+	if t == 0 {
+		return 0
+	}
 	return 60 * 1000 * 1000 / t
 }
