@@ -80,7 +80,7 @@ func MDtoMML(src []byte) *MDMML {
 					continue
 				}
 				items := strings.Split(string(lines[i]), "|")
-				if len(items) < 2 {
+				if len(items) < 3 {
 					continue
 				}
 				name := strings.Trim(items[1], " ")
@@ -216,7 +216,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				if string(cmml[j+1]) == "+" || string(cmml[j+1]) == "#" {
 					j++
 					s = s + "+"
-				} else if string(mml[j+1]) == "-" {
+				} else if string(cmml[j+1]) == "-" {
 					j++
 					s = s + "-"
 				} else if s == ">" {
