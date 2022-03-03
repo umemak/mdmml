@@ -110,7 +110,7 @@ func MDtoMML(src []byte) *MDMML {
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
 	for i, t := range mm.Tracks {
-		events := mm.toEvents(strings.Join(t.mmls, ""), i)
+		events := mm.toEvents(expand(strings.Join(t.mmls, "")), i)
 		mm.Tracks[i].smf = buildSMF(events, i)
 	}
 	mm.header = []byte{
@@ -141,9 +141,6 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 
 type loop struct {
 	pos   int
-	oct   int
-	vel   int
-	tick  int
 	count int
 }
 
@@ -152,12 +149,49 @@ type note struct {
 	vel int
 }
 
+func expand(mml string) string {
+	res := ""
+	loops := []loop{}
+	mml = strings.ReplaceAll(mml, " ", "")
+	mml += "   " // インデックス超過対策
+	for i := 0; i < len(mml); i++ {
+		s := string(mml[i])
+		if s == " " {
+			break
+		}
+		if s == "[" { // loop begin
+			loops = append(loops, loop{pos: i, count: -1})
+		} else if s == "]" { // loop end
+			v, l := num(mml[i+1:], 1, 128)
+			c := 2
+			if l > 0 {
+				i = i + l
+				c = v
+			}
+			lp := len(loops) - 1
+			if loops[lp].count == -1 {
+				loops[lp].count = c
+			}
+			if loops[lp].count > 1 {
+				loops[lp].count--
+				i = loops[lp].pos
+			} else {
+				if lp > 0 {
+					loops = loops[:lp-1]
+				}
+			}
+		} else {
+			res += s
+		}
+	}
+	return res
+}
+
 func (mm *MDMML) toEvents(mml string, ch int) []byte {
 	events := []byte{}
 	oct := 4
 	vel := 100
 	defTick := mm.lenToTick(8)
-	loops := []loop{}
 	mml = strings.ToLower(mml)
 	mml = strings.ReplaceAll(mml, " ", "")
 	mml += "   " // インデックス超過対策
@@ -303,31 +337,6 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 			if l > 0 {
 				i = i + l
 				ch = v - 1
-			}
-		} else if s == "[" { // loop begin
-			loops = append(loops, loop{pos: i, oct: oct, vel: vel, tick: defTick, count: -1})
-			i++
-		} else if s == "]" { // loop end
-			v, l := num(mml[i+1:], 1, 128)
-			c := 2
-			if l > 0 {
-				i = i + l
-				c = v
-			}
-			lp := len(loops) - 1
-			if loops[lp].count == -1 {
-				loops[lp].count = c
-			}
-			if loops[lp].count > 0 {
-				loops[lp].count--
-				oct = loops[lp].oct
-				vel = loops[lp].vel
-				defTick = loops[lp].tick
-				i = loops[lp].pos
-			} else {
-				if lp > 0 {
-					loops = loops[:lp-1]
-				}
 			}
 		}
 	}
