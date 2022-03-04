@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+var (
+	MThd = []byte{0x4D, 0x54, 0x68, 0x64}
+	MTrk = []byte{0x4D, 0x54, 0x72, 0x6B}
+	EOT  = []byte{0x00, 0xFF, 0x2F, 0x00}
+)
+
 type MDMML struct {
 	divisions int
 	title     string
@@ -113,25 +119,23 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 		events := mm.toEvents(expand(strings.Join(t.mmls, "")), i)
 		mm.Tracks[i].smf = buildSMF(events, i)
 	}
-	mm.header = []byte{
-		0x4D, 0x54, 0x68, 0x64, // "MThd"
-		0x00, 0x00, 0x00, 0x06, // Length
-		0x00, 0x01, // Format
-	}
-	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...) // Tracks
-	mm.header = append(mm.header, itofb(mm.divisions, 2)...)     // Divisions
+	mm.header = MThd
+	mm.header = append(mm.header, []byte{0x00, 0x00, 0x00, 0x06}...) // Length
+	mm.header = append(mm.header, []byte{0x00, 0x01}...)             // Format
+	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...)     // Tracks
+	mm.header = append(mm.header, itofb(mm.divisions, 2)...)         // Divisions
 
 	title := []byte{0x00, 0xff, 0x03}
 	title = append(title, itofb(len(mm.title), 1)...)
 	title = append(title, []byte(mm.title)...)
 	tempo := []byte{0x00, 0xff, 0x51, 0x03}
 	tempo = append(tempo, itofb(tempoMs(mm.tempo), 3)...)
-	smf := []byte{0x4D, 0x54, 0x72, 0x6B} // "MTrk"
+	smf := MTrk // "MTrk"
 	smf = append(smf, itofb(len(title)+len(tempo)+12, 4)...)
 	smf = append(smf, title...)
 	smf = append(smf, tempo...)
 	smf = append(smf, []byte{0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08}...) // Rhythm 4/4
-	smf = append(smf, []byte{0x00, 0xFF, 0x2F, 0x00}...)                         // EOT
+	smf = append(smf, EOT...)                                                    // EOT
 	mm.Conductor = Track{
 		name: "Conductor",
 		smf:  smf,
@@ -194,6 +198,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 	defTick := mm.lenToTick(8)
 	mml = strings.ToLower(mml)
 	mml = strings.ReplaceAll(mml, " ", "")
+	mml = strings.ReplaceAll(mml, "#", "+")
 	mml += "   " // インデックス超過対策
 	for i := 0; i < len(mml); i++ {
 		s := string(mml[i])
@@ -202,7 +207,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 		}
 		if (s >= "a" && s <= "g") || (s == "r") { // note
 			tick := defTick
-			if string(mml[i+1]) == "+" || string(mml[i+1]) == "#" {
+			if string(mml[i+1]) == "+" {
 				i++
 				s = s + "+"
 			} else if string(mml[i+1]) == "-" {
@@ -247,7 +252,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				if s == " " {
 					break
 				}
-				if string(cmml[j+1]) == "+" || string(cmml[j+1]) == "#" {
+				if string(cmml[j+1]) == "+" {
 					j++
 					s = s + "+"
 				} else if string(cmml[j+1]) == "-" {
@@ -350,12 +355,12 @@ func buildSMF(events []byte, ch int) []byte {
 	body = append(body, itob(ch, 0)...)                    // Channel
 	body = append(body, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
 	body = append(body, itob(ch, 0)...)                    // Port
-	body = append(body, []byte{0x00, 0xB0, 0x79, 0x00}...) // CC#121(Reset)
-	body = append(body, []byte{0x00, 0xB0, 0x07, 0x64}...) // CC#7(Volume)
+	body = append(body, cc(0, ch, 121, 0)...)              // CC#121(Reset)
+	body = append(body, cc(0, ch, 7, 100)...)              // CC#7(Volume)
 	body = append(body, events...)
-	body = append(body, []byte{0x00, 0xFF, 0x2F, 0x00}...) //EOT
+	body = append(body, EOT...) //EOT
 
-	smf := []byte{0x4D, 0x54, 0x72, 0x6B}     // "MTrk"
+	smf := MTrk                               // "MTrk"
 	smf = append(smf, itofb(len(body), 4)...) // Length
 	smf = append(smf, body...)
 	return smf
@@ -444,8 +449,8 @@ func event(dt, ev, n, vel int) []byte {
 
 func (mm *MDMML) programChange(ch int, p int) []byte {
 	ret := []byte{}
-	ret = append(ret, cc(0, ch, 0, 0)...)    // CC#0(MSB)
-	ret = append(ret, cc(0, ch, 0x20, 0)...) // CC#32(LSB)
+	ret = append(ret, cc(0, ch, 0, 0)...)  // CC#0(MSB)
+	ret = append(ret, cc(0, ch, 32, 0)...) // CC#32(LSB)
 	ret = append(ret, []byte{0x00}...)
 	ret = append(ret, itofb(0xC0+ch, 1)...)
 	ret = append(ret, itob(p-1, 0)...)
