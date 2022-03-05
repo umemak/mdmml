@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -8,7 +9,8 @@ import (
 )
 
 func main() {
-	src, err := os.ReadFile(os.Args[1])
+	flag.Parse()
+	src, err := os.ReadFile(flag.Arg(0))
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		os.Exit(1)
