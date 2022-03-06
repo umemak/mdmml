@@ -10,14 +10,21 @@ import (
 
 func main() {
 	flag.Parse()
-	src, err := os.ReadFile(flag.Arg(0))
+	err := run(flag.Arg(0))
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		os.Exit(1)
+	}
+}
+
+func run(fname string) error {
+	src, err := os.ReadFile(fname)
+	if err != nil {
+		return err
 	}
 	_, err = os.Stdout.Write(mdmml.MDtoMML(src).MMLtoSMF().SMF())
 	if err != nil {
-		fmt.Printf("%+v\n", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }

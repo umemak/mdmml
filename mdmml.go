@@ -148,6 +148,7 @@ type loop struct {
 	count int
 }
 
+// chode
 type note struct {
 	num int
 	vel int
