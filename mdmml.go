@@ -480,7 +480,7 @@ func itob(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 16384 {
+	if i < 128*128 {
 		for j := 2; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
@@ -490,7 +490,7 @@ func itob(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 2097152 {
+	if i < 128*128*128 {
 		for j := 3; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
@@ -502,7 +502,7 @@ func itob(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 268435456 {
+	if i < 128*128*128*128 {
 		for j := 4; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
@@ -531,7 +531,7 @@ func itofb(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 65536 {
+	if i < 256*256 {
 		for j := 2; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
@@ -541,7 +541,7 @@ func itofb(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 16777216 {
+	if i < 256*256*256 {
 		for j := 3; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
@@ -553,7 +553,7 @@ func itofb(i int, f int) []byte {
 		ret = append(ret, buf[7:8]...)
 		return ret
 	}
-	if i < 4294967296 {
+	if i < 256*256*256*256 {
 		for j := 4; j < f; j++ {
 			ret = append(ret, 0x00)
 		}
