@@ -129,7 +129,7 @@ func TestMDtoMML(t *testing.T) {
 	}
 }
 
-func TestMDMML_noteOnOff(t *testing.T) {
+func Test_noteOnOff(t *testing.T) {
 	type args struct {
 		ch   int
 		oct  int
@@ -153,10 +153,7 @@ func TestMDMML_noteOnOff(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: 960,
-			}
-			got := mm.noteOnOff(tt.args.ch, tt.args.oct, tt.args.note, tt.args.vel, mm.lenToTick(tt.args.len))
+			got := noteOnOff(tt.args.ch, tt.args.oct, tt.args.note, tt.args.vel, lenToTick(960, tt.args.len))
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -192,36 +189,24 @@ func Test_itob(t *testing.T) {
 	}
 }
 
-func TestMDMML_lenToTick(t *testing.T) {
-	type fields struct {
-		divisions int
-		header    []byte
-		Conductor Track
-		Tracks    []Track
-	}
+func Test_lenToTick(t *testing.T) {
 	type args struct {
+		div int
 		len int
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   int
+		name string
+		args args
+		want int
 	}{
-		{name: "div960 len8", fields: fields{divisions: 960}, args: args{len: 8}, want: 480},
-		{name: "div960 len4", fields: fields{divisions: 960}, args: args{len: 4}, want: 960},
-		{name: "div480 len8", fields: fields{divisions: 480}, args: args{len: 8}, want: 240},
-		{name: "div480 len4", fields: fields{divisions: 480}, args: args{len: 4}, want: 480},
+		{name: "div960 len8", args: args{div: 960, len: 8}, want: 480},
+		{name: "div960 len4", args: args{div: 960, len: 4}, want: 960},
+		{name: "div480 len8", args: args{div: 480, len: 8}, want: 240},
+		{name: "div480 len4", args: args{div: 480, len: 4}, want: 480},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: tt.fields.divisions,
-				header:    tt.fields.header,
-				Conductor: tt.fields.Conductor,
-				Tracks:    tt.fields.Tracks,
-			}
-			got := mm.lenToTick(tt.args.len)
+			got := lenToTick(tt.args.div, tt.args.len)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -326,10 +311,7 @@ func TestMDMML_toSMF(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: 960,
-			}
-			events := mm.toEvents(tt.args.mml, 0)
+			events := toEvents(tt.args.mml, 0, 960)
 			got := buildSMF(events, 0)
 			assert.Equal(t, tt.want, got)
 		})
@@ -485,11 +467,7 @@ func TestMDMML_toEvents(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: 960,
-				tempo:     120,
-			}
-			got := mm.toEvents(tt.args.mml, tt.args.ch)
+			got := toEvents(tt.args.mml, tt.args.ch, 960)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -524,39 +502,22 @@ func Test_buildSMF(t *testing.T) {
 	}
 }
 
-func TestMDMML_notesOnOff(t *testing.T) {
-	type fields struct {
-		divisions int
-		title     string
-		tempo     int
-		header    []byte
-		Conductor Track
-		Tracks    []Track
-	}
+func Test_notesOnOff(t *testing.T) {
 	type args struct {
 		ch    int
 		notes []note
 		tick  int
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   []byte
+		name string
+		args args
+		want []byte
 	}{
 		{name: "default", want: []byte{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: tt.fields.divisions,
-				title:     tt.fields.title,
-				tempo:     tt.fields.tempo,
-				header:    tt.fields.header,
-				Conductor: tt.fields.Conductor,
-				Tracks:    tt.fields.Tracks,
-			}
-			got := mm.notesOnOff(tt.args.ch, tt.args.notes, tt.args.tick)
+			got := notesOnOff(tt.args.ch, tt.args.notes, tt.args.tick)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -606,38 +567,21 @@ func Test_event(t *testing.T) {
 	}
 }
 
-func TestMDMML_programChange(t *testing.T) {
-	type fields struct {
-		divisions int
-		title     string
-		tempo     int
-		header    []byte
-		Conductor Track
-		Tracks    []Track
-	}
+func Test_programChange(t *testing.T) {
 	type args struct {
 		ch int
 		p  int
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   []byte
+		name string
+		args args
+		want []byte
 	}{
 		{name: "default", want: []byte{0x0, 0xb0, 0x0, 0x0, 0x0, 0xb0, 0x20, 0x0, 0x0, 0xc0, 0xff}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &MDMML{
-				divisions: tt.fields.divisions,
-				title:     tt.fields.title,
-				tempo:     tt.fields.tempo,
-				header:    tt.fields.header,
-				Conductor: tt.fields.Conductor,
-				Tracks:    tt.fields.Tracks,
-			}
-			got := mm.programChange(tt.args.ch, tt.args.p)
+			got := programChange(tt.args.ch, tt.args.p)
 			assert.Equal(t, tt.want, got)
 		})
 	}

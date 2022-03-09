@@ -116,7 +116,7 @@ func MDtoMML(src []byte) *MDMML {
 
 func (mm *MDMML) MMLtoSMF() *MDMML {
 	for i, t := range mm.Tracks {
-		events := mm.toEvents(expand(strings.Join(t.mmls, "")), i)
+		events := toEvents(expand(strings.Join(t.mmls, "")), i, mm.divisions)
 		mm.Tracks[i].smf = buildSMF(events, i)
 	}
 	mm.header = MThd
@@ -192,11 +192,11 @@ func expand(mml string) string {
 	return res
 }
 
-func (mm *MDMML) toEvents(mml string, ch int) []byte {
+func toEvents(mml string, ch, div int) []byte {
 	events := []byte{}
 	oct := 4
 	vel := 100
-	defTick := mm.lenToTick(8)
+	defTick := lenToTick(div, 8)
 	mml = strings.ToLower(mml)
 	mml = strings.ReplaceAll(mml, " ", "")
 	mml = strings.ReplaceAll(mml, "#", "+")
@@ -215,10 +215,10 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				i++
 				s = s + "-"
 			}
-			v, l := num(mml[i+1:], 1, mm.divisions)
+			v, l := num(mml[i+1:], 1, div)
 			if l > 0 {
 				i = i + l
-				tick = mm.lenToTick(v)
+				tick = lenToTick(div, v)
 			}
 			if string(mml[i+1]) == "." {
 				i++
@@ -230,10 +230,10 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				}
 				i++
 				tick2 := 0
-				v, l := num(mml[i+1:], 1, mm.divisions)
+				v, l := num(mml[i+1:], 1, div)
 				if l > 0 {
 					i = i + l
-					tick2 = mm.lenToTick(v)
+					tick2 = lenToTick(div, v)
 				}
 				if string(mml[i+1]) == "." {
 					i++
@@ -241,7 +241,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				}
 				tick += tick2
 			}
-			events = append(events, mm.noteOnOff(ch, oct, s, vel, tick)...)
+			events = append(events, noteOnOff(ch, oct, s, vel, tick)...)
 		} else if s == "{" { // chode
 			cp := strings.Index(mml[i+1:], "}")
 			cmml := mml[i+1:i+cp+1] + "   "
@@ -270,10 +270,10 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				notes = append(notes, note{num: n, vel: vel})
 			}
 			tick := defTick
-			v, l := num(mml[i+1:], 1, mm.divisions)
+			v, l := num(mml[i+1:], 1, div)
 			if l > 0 {
 				i = i + l
-				tick = mm.lenToTick(v)
+				tick = lenToTick(div, v)
 			}
 			if string(mml[i+1]) == "." {
 				i++
@@ -285,10 +285,10 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				}
 				i++
 				tick2 := 0
-				v, l := num(mml[i+1:], 1, mm.divisions)
+				v, l := num(mml[i+1:], 1, div)
 				if l > 0 {
 					i = i + l
-					tick2 = mm.lenToTick(v)
+					tick2 = lenToTick(div, v)
 				}
 				if string(mml[i+1]) == "." {
 					i++
@@ -296,7 +296,7 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 				}
 				tick += tick2
 			}
-			events = append(events, mm.notesOnOff(ch, notes, tick)...)
+			events = append(events, notesOnOff(ch, notes, tick)...)
 		} else if s == "o" { // octave
 			v, l := num(mml[i+1:], 1, 8)
 			if l > 0 {
@@ -308,17 +308,17 @@ func (mm *MDMML) toEvents(mml string, ch int) []byte {
 		} else if s == "<" {
 			oct--
 		} else if s == "l" { // length
-			v, l := num(mml[i+1:], 1, mm.divisions)
+			v, l := num(mml[i+1:], 1, div)
 			if l > 0 {
 				i = i + l
-				defTick = mm.lenToTick(v)
+				defTick = lenToTick(div, v)
 			}
 		} else if s == "@" { // program
 			v, l := num(mml[i+1:], 1, 128)
 			if l > 0 {
 				i = i + l
 			}
-			events = append(events, mm.programChange(ch, v)...)
+			events = append(events, programChange(ch, v)...)
 		} else if s == "p" { // pan
 			v, l := num(mml[i+1:], 0, 127)
 			if l > 0 {
@@ -390,7 +390,7 @@ func num(s string, min, max int) (int, int) {
 	return n, len(ss)
 }
 
-func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, tick int) []byte {
+func noteOnOff(ch int, oct int, note string, vel int, tick int) []byte {
 	ret := []byte{}
 	if note == "r" {
 		// 無音を再生
@@ -404,7 +404,7 @@ func (mm *MDMML) noteOnOff(ch int, oct int, note string, vel int, tick int) []by
 	return ret
 }
 
-func (mm *MDMML) notesOnOff(ch int, notes []note, tick int) []byte {
+func notesOnOff(ch int, notes []note, tick int) []byte {
 	ret := []byte{}
 	for _, n := range notes {
 		ret = append(ret, event(0, 0x90+ch, n.num, n.vel)...) // on
@@ -448,7 +448,7 @@ func event(dt, ev, n, vel int) []byte {
 	return ret
 }
 
-func (mm *MDMML) programChange(ch int, p int) []byte {
+func programChange(ch int, p int) []byte {
 	ret := []byte{}
 	ret = append(ret, cc(0, ch, 0, 0)...)  // CC#0(MSB)
 	ret = append(ret, cc(0, ch, 32, 0)...) // CC#32(LSB)
@@ -570,8 +570,8 @@ func itofb(i int, f int) []byte {
 	return ret
 }
 
-func (mm *MDMML) lenToTick(len int) int {
-	return mm.divisions * 4 / len
+func lenToTick(div, len int) int {
+	return div * 4 / len
 }
 
 func tempoMs(t int) int {
