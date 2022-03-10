@@ -57,18 +57,10 @@ func MDtoMML(src []byte) *MDMML {
 					continue
 				}
 				if items[0] == "Divisions" {
-					divisions, err := strconv.Atoi(items[1])
-					if err != nil {
-						divisions = 960
-					}
-					mm.divisions = divisions
+					mm.divisions = atoi(items[1], 960)
 				}
 				if items[0] == "Tempo" {
-					tempo, err := strconv.Atoi(items[1])
-					if err != nil {
-						tempo = 120
-					}
-					mm.tempo = tempo
+					mm.tempo = atoi(items[1], 120)
 				}
 				if items[0] == "Title" {
 					mm.title = strings.TrimSpace(items[1])
@@ -117,7 +109,7 @@ func MDtoMML(src []byte) *MDMML {
 func (mm *MDMML) MMLtoSMF() *MDMML {
 	for i, t := range mm.Tracks {
 		events := toEvents(expand(strings.Join(t.mmls, "")), i, mm.divisions)
-		mm.Tracks[i].smf = buildSMF(events, i)
+		mm.Tracks[i].smf = buildSMF(t.name, events, i)
 	}
 	mm.header = MThd
 	mm.header = append(mm.header, []byte{0x00, 0x00, 0x00, 0x06}...) // Length
@@ -125,11 +117,8 @@ func (mm *MDMML) MMLtoSMF() *MDMML {
 	mm.header = append(mm.header, itofb(len(mm.Tracks)+1, 2)...)     // Tracks
 	mm.header = append(mm.header, itofb(mm.divisions, 2)...)         // Divisions
 
-	title := []byte{0x00, 0xff, 0x03}
-	title = append(title, itofb(len(mm.title), 1)...)
-	title = append(title, []byte(mm.title)...)
-	tempo := []byte{0x00, 0xff, 0x51, 0x03}
-	tempo = append(tempo, itofb(tempoMs(mm.tempo), 3)...)
+	title := buildTitle(mm.title)
+	tempo := buildTempo(mm.tempo)
 	smf := MTrk // "MTrk"
 	smf = append(smf, itofb(len(title)+len(tempo)+12, 4)...)
 	smf = append(smf, title...)
@@ -330,8 +319,7 @@ func toEvents(mml string, ch, div int) []byte {
 			if l > 0 {
 				i = i + l
 			}
-			events = append(events, []byte{0x00, 0xff, 0x51, 0x03}...)
-			events = append(events, itofb(tempoMs(v), 3)...)
+			events = append(events, buildTempo(v)...)
 		} else if s == "v" { // velocity
 			v, l := num(mml[i+1:], 0, 127)
 			if l > 0 {
@@ -349,9 +337,9 @@ func toEvents(mml string, ch, div int) []byte {
 	return events
 }
 
-func buildSMF(events []byte, ch int) []byte {
+func buildSMF(title string, events []byte, ch int) []byte {
 	body := []byte{}
-	body = append(body, []byte{0x00, 0xFF, 0x03, 0x00}...) // Title
+	body = append(body, buildTitle(title)...)              // Title
 	body = append(body, []byte{0x00, 0xFF, 0x20, 0x01}...) // Channel
 	body = append(body, itob(ch, 0)...)                    // Channel
 	body = append(body, []byte{0x00, 0xFF, 0x21, 0x01}...) // Port
@@ -579,4 +567,25 @@ func tempoMs(t int) int {
 		return 0
 	}
 	return 60 * 1000 * 1000 / t
+}
+
+func atoi(a string, def int) int {
+	ret, err := strconv.Atoi(a)
+	if err != nil {
+		return def
+	}
+	return ret
+}
+
+func buildTitle(title string) []byte {
+	ret := []byte{0x00, 0xff, 0x03}
+	ret = append(ret, itofb(len(title), 1)...)
+	ret = append(ret, []byte(title)...)
+	return ret
+}
+
+func buildTempo(tempo int) []byte {
+	ret := []byte{0x00, 0xff, 0x51, 0x03}
+	ret = append(ret, itofb(tempoMs(tempo), 3)...)
+	return ret
 }

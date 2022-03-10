@@ -29,8 +29,8 @@ func TestMDMML_SMF(t *testing.T) {
 			0x00, 0xFF, 0x2F, 0x00, // EOT
 			// Track A
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0xB5, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
+			0x00, 0x00, 0x00, 0xB6, // Length
+			0x00, 0xFF, 0x03, 0x01, 0x41, // Title
 			0x00, 0xFF, 0x20, 0x01, 0x00, // channel
 			0x00, 0xFF, 0x21, 0x01, 0x00, // port
 			0x00, 0xB0, 0x79, 0x00, // CC#121(Reset)
@@ -57,8 +57,8 @@ func TestMDMML_SMF(t *testing.T) {
 			0x00, 0xFF, 0x2F, 0x00, //EOT
 			// Track B
 			0x4D, 0x54, 0x72, 0x6B, // "MTrk"
-			0x00, 0x00, 0x00, 0xB5, // Length
-			0x00, 0xFF, 0x03, 0x00, // Title
+			0x00, 0x00, 0x00, 0xB6, // Length
+			0x00, 0xFF, 0x03, 0x01, 0x42, // Title
 			0x00, 0xFF, 0x20, 0x01, 0x01, // channel
 			0x00, 0xFF, 0x21, 0x01, 0x01, // port
 			0x00, 0xB1, 0x79, 0x00, // CC#121(Reset)
@@ -312,7 +312,7 @@ func TestMDMML_toSMF(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			events := toEvents(tt.args.mml, 0, 960)
-			got := buildSMF(events, 0)
+			got := buildSMF("", events, 0)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -475,6 +475,7 @@ func TestMDMML_toEvents(t *testing.T) {
 
 func Test_buildSMF(t *testing.T) {
 	type args struct {
+		title  string
 		events []byte
 		ch     int
 	}
@@ -496,7 +497,7 @@ func Test_buildSMF(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildSMF(tt.args.events, tt.args.ch)
+			got := buildSMF(tt.args.title, tt.args.events, tt.args.ch)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -653,6 +654,66 @@ func Test_expand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := expand(tt.args.mml)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_atoi(t *testing.T) {
+	type args struct {
+		a   string
+		def int
+	}
+	tests := []struct {
+		name string
+		args args
+		want int
+	}{
+		{name: "normal", args: args{a: "123", def: 456}, want: 123},
+		{name: "use def", args: args{a: "123abc", def: 234}, want: 234},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := atoi(tt.args.a, tt.args.def)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_buildTitle(t *testing.T) {
+	type args struct {
+		title string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "normal", args: args{title: "abc"}, want: []byte{0x00, 0xff, 0x03, 0x03, 0x61, 0x62, 0x63}},
+		{name: "empty", args: args{title: ""}, want: []byte{0x00, 0xff, 0x03, 0x00}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildTitle(tt.args.title)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_buildTempo(t *testing.T) {
+	type args struct {
+		tempo int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{name: "120", args: args{tempo: 120}, want: []byte{0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildTempo(tt.args.tempo)
 			assert.Equal(t, tt.want, got)
 		})
 	}
