@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/umemak/mdmml"
@@ -18,7 +21,7 @@ func main() {
 }
 
 func run(fname string) error {
-	src, err := os.ReadFile(fname)
+	src, err := read(fname)
 	if err != nil {
 		return err
 	}
@@ -27,4 +30,21 @@ func run(fname string) error {
 		return err
 	}
 	return nil
+}
+
+func read(fname string) ([]byte, error) {
+	if _, err := url.ParseRequestURI(fname); err == nil {
+		return download(fname)
+	}
+	return os.ReadFile(fname)
+}
+
+func download(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
 }
