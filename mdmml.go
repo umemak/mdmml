@@ -153,9 +153,10 @@ func expand(mml string) string {
 		if s == " " {
 			break
 		}
-		if s == "[" { // loop begin
+		switch s {
+		case "[": // loop begin
 			loops = append(loops, loop{pos: i, count: -1})
-		} else if s == "]" { // loop end
+		case "]": // loop end
 			v, l := num(mml[i+1:], 1, 128)
 			c := 2
 			if l > 0 {
@@ -174,7 +175,7 @@ func expand(mml string) string {
 					loops = loops[:lp-1]
 				}
 			}
-		} else {
+		default:
 			res += s
 		}
 	}
@@ -213,10 +214,7 @@ func toEvents(mml string, ch, div int) []byte {
 				i++
 				tick = int(float64(tick) * 1.5)
 			}
-			for {
-				if string(mml[i+1]) != "^" {
-					break
-				}
+			for string(mml[i+1]) == "^" {
 				i++
 				tick2 := 0
 				v, l := num(mml[i+1:], 1, div)
@@ -268,10 +266,7 @@ func toEvents(mml string, ch, div int) []byte {
 				i++
 				tick = int(float64(tick) * 1.5)
 			}
-			for {
-				if string(mml[i+1]) != "^" {
-					break
-				}
+			for string(mml[i+1]) == "^" {
 				i++
 				tick2 := 0
 				v, l := num(mml[i+1:], 1, div)
