@@ -6,7 +6,32 @@ A library to convert MML written in Markdown to SMF.
 
 ## Usage
 
+### CLI
+
+```bash
 $ go run cmd/mdmml/main.go testdata/demo.md > demo.mid
+```
+
+### Web UI (Browser & Cloudflare Workers)
+
+WebAssembly (Wasm) と Web Audio API (Tone.js) を用いた Web UI でブラウザ上で即座にプレビュー・再生・MIDIダウンロードが可能です。
+
+```bash
+# 開発サーバー起動
+$ make web-dev
+# または
+$ cd web && npm run dev
+
+# ビルド (Wasm + Frontend)
+$ make web-build
+# または
+$ cd web && npm run build
+
+# Cloudflare Workers にデプロイ
+$ make deploy
+# または
+$ cd web && npm run deploy
+```
 
 ## MML
 
