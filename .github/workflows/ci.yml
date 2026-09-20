@@ -28,8 +28,7 @@ jobs:
           go-version: '1.24'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
-        with:
-          version: v1.64.8
+
 
   deploy:
     name: Deploy to Cloudflare Workers
