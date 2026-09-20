@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { RefreshCw, Copy, Check } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { RefreshCw, Copy, Check, TableProperties, Sparkles } from 'lucide-react';
 import { PRESETS, Preset } from '../presets';
+import { formatMarkdownTables } from '../utils/tableFormatter';
 
 interface EditorProps {
   value: string;
@@ -21,9 +22,20 @@ export const Editor: React.FC<EditorProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [formatted, setFormatted] = useState(false);
 
-  // Tab キー入力時のスペース挿入対応
+  // テーブル整形処理
+  const handleFormat = () => {
+    const formattedText = formatMarkdownTables(value);
+    if (formattedText !== value) {
+      onChange(formattedText);
+      setFormatted(true);
+      setTimeout(() => setFormatted(false), 1500);
+    }
+  };
+
+  // キーボードショートカット対応
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -40,6 +52,9 @@ export const Editor: React.FC<EditorProps> = ({
     } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       onConvert();
+    } else if ((e.altKey && e.shiftKey && (e.key === 'f' || e.key === 'F')) || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F'))) {
+      e.preventDefault();
+      handleFormat();
     }
   };
 
@@ -86,15 +101,40 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* テーブル整形ボタン */}
+          <button
+            onClick={handleFormat}
+            className={`inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition cursor-pointer border ${
+              formatted
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-sm shadow-emerald-500/20'
+                : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/60'
+            }`}
+            title="Markdownテーブルの列幅を綺麗に揃えます (Alt+Shift+F)"
+          >
+            {formatted ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>整形完了</span>
+              </>
+            ) : (
+              <>
+                <TableProperties className="w-3.5 h-3.5 text-indigo-400" />
+                <span>テーブル整形</span>
+              </>
+            )}
+          </button>
+
+          {/* コピーボタン */}
           <button
             onClick={handleCopy}
-            className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 rounded transition cursor-pointer"
+            className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 rounded-lg transition cursor-pointer border border-transparent hover:border-slate-700"
             title="Markdownをクリップボードにコピー"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'コピー完了' : 'コピー'}</span>
           </button>
 
+          {/* MIDI再変換ボタン */}
           <button
             onClick={onConvert}
             disabled={isConverting}
@@ -135,12 +175,15 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
 
       {/* ステータスバー */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900 border-t border-slate-800 text-[11px] text-slate-400 font-mono">
+      <div className="flex flex-wrap items-center justify-between px-4 py-1.5 bg-slate-900 border-t border-slate-800 text-[11px] text-slate-400 font-mono gap-2">
         <div className="flex items-center space-x-3">
           <span>{lineCount} 行</span>
           <span>{value.length} 文字</span>
         </div>
-        <div className="text-slate-400">ショートカット: <kbd className="bg-slate-800 px-1 py-0.5 rounded text-slate-300">Ctrl+Enter</kbd> で即時変換</div>
+        <div className="flex items-center space-x-3 text-slate-400">
+          <span><kbd className="bg-slate-800 px-1 py-0.5 rounded text-slate-300">Alt+Shift+F</kbd> で表整形</span>
+          <span><kbd className="bg-slate-800 px-1 py-0.5 rounded text-slate-300">Ctrl+Enter</kbd> で即時変換</span>
+        </div>
       </div>
     </div>
   );
