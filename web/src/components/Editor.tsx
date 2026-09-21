@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { RefreshCw, Copy, Check, TableProperties, Sparkles } from 'lucide-react';
+import { RefreshCw, Copy, Check, TableProperties, Save } from 'lucide-react';
 import { PRESETS, Preset } from '../presets';
 import { formatMarkdownTables } from '../utils/tableFormatter';
 
@@ -10,6 +10,7 @@ interface EditorProps {
   isConverting: boolean;
   selectedPreset: string;
   onSelectPreset: (preset: Preset) => void;
+  onSave?: () => void;
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -19,6 +20,7 @@ export const Editor: React.FC<EditorProps> = ({
   isConverting,
   selectedPreset,
   onSelectPreset,
+  onSave,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,9 @@ export const Editor: React.FC<EditorProps> = ({
       setTimeout(() => {
         target.selectionStart = target.selectionEnd = start + 2;
       }, 0);
+    } else if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      onSave?.();
     } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       onConvert();
@@ -123,6 +128,18 @@ export const Editor: React.FC<EditorProps> = ({
               </>
             )}
           </button>
+
+          {/* 保存ボタン */}
+          {onSave && (
+            <button
+              onClick={onSave}
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition cursor-pointer bg-slate-800/80 hover:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-500/60"
+              title="楽譜をD1クラウドに保存 (Ctrl+S / Cmd+S)"
+            >
+              <Save className="w-3.5 h-3.5 text-indigo-400" />
+              <span>保存</span>
+            </button>
+          )}
 
           {/* コピーボタン */}
           <button

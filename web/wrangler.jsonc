@@ -7,6 +7,13 @@
     "directory": "./dist",
     "binding": "ASSETS"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mdmml-db",
+      "database_id": "4dbf1867-966f-44ec-b1e6-a4e7c024cfbf"
+    }
+  ],
   "observability": {
     "enabled": true
   }

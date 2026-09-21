@@ -31,7 +31,7 @@ export async function initWasm(): Promise<void> {
     const result = await WebAssembly.instantiate(wasmBytes, go.importObject);
 
     // バックグラウンドで Go ランタイムを実行
-    go.run(result.instance);
+    go.run((result as any).instance || result);
 
     // mdmmlConvert が定義されるのを待つ
     let retries = 0;

@@ -42,7 +42,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   metadata,
   state,
   currentTime,
-  progress,
+  progress: _progress,
   activeTracks,
   onPlay,
   onPause,

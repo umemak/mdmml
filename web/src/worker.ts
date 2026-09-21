@@ -1,16 +1,11 @@
-interface Env {
-  ASSETS: Fetcher;
-}
+import { handleApiRequest } from './server/api';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    // API エンドポイント（ヘルスチェック等の拡張用）
-    if (url.pathname === '/api/health') {
-      return new Response(JSON.stringify({ status: 'ok', service: 'mdmml' }), {
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      });
+    // /api/* のリクエストを処理
+    const apiResponse = await handleApiRequest(request, env);
+    if (apiResponse) {
+      return apiResponse;
     }
 
     // 静的アセット（Web UI, wasm, wasm_exec.js）へのルーティング

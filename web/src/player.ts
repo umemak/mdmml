@@ -60,7 +60,7 @@ export class MidiAudioPlayer {
   private trackInstruments: SoundfontInstrument[] = [];
   private engine: SoundEngine = 'soundfont';
   private state: PlayerState = 'stopped';
-  private scheduledEvents: number[] = [];
+  private scheduledEvents: any[] = [];
   private animFrameId: number | null = null;
   private callbacks: PlaybackCallback = {};
   private activeTracks = new Set<number>();
