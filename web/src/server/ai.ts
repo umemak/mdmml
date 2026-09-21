@@ -51,8 +51,8 @@ export async function transcribeScoreImage(
     base64Data = match[2];
   }
 
-  // Gemini 2.5 Flash API を呼び出し (フォールバックとして 1.5 Flash も可能)
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  // Gemini 3.6 Flash API を呼び出し (推奨モデル)
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
 
   const requestBody = {
     contents: [

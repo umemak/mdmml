@@ -110,7 +110,7 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
 
     setError(null);
     setIsLoading(true);
-    setProgressStep('Gemini 2.5 Flash に楽譜画像を送信中...');
+    setProgressStep('Gemini 3.6 Flash に楽譜画像を送信中...');
 
     try {
       setTimeout(() => {
