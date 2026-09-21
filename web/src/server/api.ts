@@ -43,10 +43,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         image?: string;
         apiKey?: string;
         modelPreference?: 'pro' | 'flash';
+        existingMarkdown?: string;
       };
       const image = body.image;
       const apiKey = body.apiKey?.trim() || env.GEMINI_API_KEY;
       const modelPreference = body.modelPreference || 'pro';
+      const existingMarkdown = body.existingMarkdown;
 
       if (!image) {
         return json({ error: '画像データが指定されていません' }, 400);
@@ -61,7 +63,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         );
       }
 
-      const { markdown, modelUsed } = await transcribeScoreImage(image, apiKey, modelPreference);
+      const { markdown, modelUsed } = await transcribeScoreImage(
+        image,
+        apiKey,
+        modelPreference,
+        existingMarkdown
+      );
       return json({ markdown, modelUsed });
     } catch (err: any) {
       return json({ error: '楽譜の解析・変換に失敗しました: ' + (err.message || '') }, 500);

@@ -303,25 +303,42 @@ export function App() {
   };
 
   // AIによる楽譜画像からの変換成功時
-  const handleTranscribeSuccess = (generatedMarkdown: string, modelUsed?: string) => {
+  const handleTranscribeSuccess = (
+    generatedMarkdown: string,
+    modelUsed?: string,
+    wasAppended?: boolean
+  ) => {
     setMarkdown(generatedMarkdown);
     setSelectedPreset('custom');
-    setCurrentScoreId(null);
 
     // Front Matter からタイトルを抽出
     const titleMatch = generatedMarkdown.match(/Title:\s*["']?([^"'\n\r]+)["']?/i);
-    const extractedTitle = titleMatch ? titleMatch[1].trim() : 'AI生成楽譜';
-    setCurrentScoreTitle(extractedTitle);
-    setCurrentScoreIsPublic(false);
-    setIsScoreOwner(true);
+    const extractedTitle = titleMatch
+      ? titleMatch[1].trim()
+      : currentScoreTitle || 'AI生成楽譜';
 
-    if (window.location.search) {
-      window.history.replaceState({}, '', window.location.pathname);
+    if (!wasAppended) {
+      setCurrentScoreId(null);
+      setCurrentScoreTitle(extractedTitle);
+      setCurrentScoreIsPublic(false);
+      setIsScoreOwner(true);
+
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }
+
     handleConvert(generatedMarkdown);
-    showToast(
-      `楽譜画像を「${extractedTitle}」として読み込みました！${modelUsed ? ` (${modelUsed})` : ''}`
-    );
+
+    if (wasAppended) {
+      showToast(
+        `楽譜の末尾に続きの小節を追加・連結しました！${modelUsed ? ` (${modelUsed})` : ''}`
+      );
+    } else {
+      showToast(
+        `楽譜画像を「${extractedTitle}」として読み込みました！${modelUsed ? ` (${modelUsed})` : ''}`
+      );
+    }
   };
 
   // MIDI ダウンロード
@@ -658,6 +675,7 @@ export function App() {
         isOpen={transcribeModalOpen}
         onClose={() => setTranscribeModalOpen(false)}
         onSuccess={handleTranscribeSuccess}
+        existingMarkdown={markdown}
       />
     </div>
   );

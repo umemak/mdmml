@@ -148,7 +148,8 @@ async function getCandidateModels(
 export async function transcribeScoreImage(
   base64DataUrl: string,
   apiKey: string,
-  modelPreference: 'pro' | 'flash' = 'pro'
+  modelPreference: 'pro' | 'flash' = 'pro',
+  existingMarkdown?: string
 ): Promise<{ markdown: string; modelUsed: string }> {
   let mimeType = 'image/jpeg';
   let base64Data = base64DataUrl;
@@ -157,6 +158,22 @@ export async function transcribeScoreImage(
   if (match) {
     mimeType = match[1];
     base64Data = match[2];
+  }
+
+  let promptInstruction =
+    'この楽譜画像を音楽理論と読譜規則に厳密に従って解析し、各小節の拍数・音価の合計を正確に一致させた完全な mdmml Markdown テーブルを出力してください。';
+
+  if (existingMarkdown && existingMarkdown.trim()) {
+    promptInstruction = `この楽譜画像は、既存の楽譜（1ページ目など）に続く後続ページ・続きの楽譜です。
+既存の楽譜の構成は以下の通りです：
+\`\`\`markdown
+${existingMarkdown.slice(0, 1500)}
+\`\`\`
+
+【続きページ解析の厳格な指示】
+1. トラック・パート名（例: RH, LH 等）は、既存の楽譜と完全に同一の命名を使用してください。
+2. 既存のテンポ（Tempo）や調号（シャープ/フラット）、音色設定（@）の整合性を維持してください。
+3. この画像に描かれている続きの小節のみを mdmml テーブルとして出力してください。`;
   }
 
   const requestBody = {
@@ -172,7 +189,7 @@ export async function transcribeScoreImage(
             },
           },
           {
-            text: 'この楽譜画像を音楽理論と読譜規則に厳密に従って解析し、各小節の拍数・音価の合計を正確に一致させた完全な mdmml Markdown テーブルを出力してください。',
+            text: promptInstruction,
           },
         ],
       },

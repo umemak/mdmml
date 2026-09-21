@@ -146,12 +146,13 @@ export async function fetchAiConfig(): Promise<{ hasServerKey: boolean }> {
 export async function transcribeScoreImageApi(
   image: string,
   apiKey?: string,
-  modelPreference: 'pro' | 'flash' = 'pro'
+  modelPreference: 'pro' | 'flash' = 'pro',
+  existingMarkdown?: string
 ): Promise<{ markdown: string; modelUsed?: string }> {
   const res = await fetch('/api/ai/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image, apiKey, modelPreference }),
+    body: JSON.stringify({ image, apiKey, modelPreference, existingMarkdown }),
   });
   const data = (await res.json()) as { markdown?: string; modelUsed?: string; error?: string };
   if (!res.ok) {

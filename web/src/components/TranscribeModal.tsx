@@ -12,24 +12,35 @@ import {
   CheckCircle2,
   Cpu,
   Zap,
+  PlusCircle,
+  Layers,
+  RefreshCw,
 } from 'lucide-react';
 import { fetchAiConfig, transcribeScoreImageApi } from '../api';
+import { mergeScoreMarkdowns } from '../utils/tableMerger';
 
 interface TranscribeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (markdown: string, modelUsed?: string) => void;
+  onSuccess: (markdown: string, modelUsed?: string, wasAppended?: boolean) => void;
+  existingMarkdown?: string;
 }
 
 export const TranscribeModal: React.FC<TranscribeModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  existingMarkdown,
 }) => {
+  const hasExistingScore = Boolean(
+    existingMarkdown && existingMarkdown.trim().includes('|')
+  );
+
   const [fileName, setFileName] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string>('');
   const [modelPreference, setModelPreference] = useState<'pro' | 'flash'>('pro');
+  const [appendMode, setAppendMode] = useState<boolean>(true);
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [hasServerKey, setHasServerKey] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -50,10 +61,11 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
       if (savedPref === 'pro' || savedPref === 'flash') {
         setModelPreference(savedPref);
       }
+      setAppendMode(hasExistingScore);
       setError(null);
       fetchAiConfig().then((cfg) => setHasServerKey(cfg.hasServerKey));
     }
-  }, [isOpen]);
+  }, [isOpen, hasExistingScore]);
 
   // クリップボードからの画像貼り付け (Ctrl+V / Cmd+V)
   useEffect(() => {
@@ -134,12 +146,21 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
         setProgressStep('小節ごとの拍数・音価を計算し mdmml 構文を生成中...');
       }, 4500);
 
+      const useAppend = appendMode && hasExistingScore && Boolean(existingMarkdown);
+
       const result = await transcribeScoreImageApi(
         imagePreview,
         keyToUse || undefined,
-        modelPreference
+        modelPreference,
+        useAppend ? existingMarkdown : undefined
       );
-      onSuccess(result.markdown, result.modelUsed);
+
+      let finalMarkdown = result.markdown;
+      if (useAppend && existingMarkdown) {
+        finalMarkdown = mergeScoreMarkdowns(existingMarkdown, result.markdown);
+      }
+
+      onSuccess(finalMarkdown, result.modelUsed, useAppend);
       onClose();
     } catch (err: any) {
       setError(err.message || '楽譜の解析に失敗しました');
@@ -257,11 +278,81 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
             )}
           </div>
 
+          {/* 反映方法の選択（既存楽譜がある場合のみ表示） */}
+          {hasExistingScore && (
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
+                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                <span>2. 反映方法（複数ページの追加読み込み）</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAppendMode(true)}
+                  className={`p-2.5 rounded-xl border text-left transition flex items-start space-x-2.5 cursor-pointer ${
+                    appendMode
+                      ? 'border-indigo-500/80 bg-indigo-950/40 text-slate-100 ring-1 ring-indigo-500/50'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div
+                    className={`p-1.5 rounded-lg mt-0.5 ${
+                      appendMode
+                        ? 'bg-indigo-500/20 text-indigo-300'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium flex items-center space-x-1.5">
+                      <span>末尾に追加</span>
+                      <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1 py-0.2 rounded font-mono">
+                        おすすめ
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                      現在の楽譜のトラックを引き継ぎ、後ろの小節として連結します
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAppendMode(false)}
+                  className={`p-2.5 rounded-xl border text-left transition flex items-start space-x-2.5 cursor-pointer ${
+                    !appendMode
+                      ? 'border-amber-500/80 bg-amber-950/40 text-slate-100 ring-1 ring-amber-500/50'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div
+                    className={`p-1.5 rounded-lg mt-0.5 ${
+                      !appendMode
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium flex items-center space-x-1.5">
+                      <span>新しく上書き</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                      現在のエディタの内容を置き換えて1小節目から作成します
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* モデル推論モードの選択 */}
           <div className="space-y-1.5 pt-1">
             <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
               <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>2. 解析モデル</span>
+              <span>{hasExistingScore ? '3.' : '2.'} 解析モデル</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -330,7 +421,7 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
                 <Key className="w-3.5 h-3.5 text-indigo-400" />
-                <span>3. Gemini API キー</span>
+                <span>{hasExistingScore ? '4.' : '3.'} Gemini API キー</span>
                 {hasServerKey && (
                   <span className="text-[10px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 px-1.5 py-0.2 rounded font-mono ml-1 flex items-center space-x-1">
                     <CheckCircle2 className="w-2.5 h-2.5" />
