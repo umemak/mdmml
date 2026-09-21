@@ -49,9 +49,14 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 初期化: localStorage から API Key & モデル設定読み込み & サーバー設定チェック
+  // 初期化: localStorage から API Key & モデル設定読み込み & サーバー設定チェック & 画像リセット
   useEffect(() => {
     if (isOpen) {
+      setFileName(null);
+      setImagePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       const savedKey = localStorage.getItem('mdmml_gemini_api_key') || '';
       setApiKey(savedKey);
       const savedPref = localStorage.getItem('mdmml_gemini_model_preference') as
