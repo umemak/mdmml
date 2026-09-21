@@ -1,15 +1,38 @@
 import React, { useRef, useState } from 'react';
-import { RefreshCw, Copy, Check, TableProperties, Save, Sparkles } from 'lucide-react';
-import { PRESETS, Preset } from '../presets';
+import {
+  RefreshCw,
+  Copy,
+  Check,
+  TableProperties,
+  Save,
+  Sparkles,
+  Globe,
+  FileCode,
+  FilePlus,
+  Music,
+} from 'lucide-react';
 import { formatMarkdownTables } from '../utils/tableFormatter';
+
+const DEFAULT_SCORE_TEMPLATE = `---
+Title: "無題の楽譜"
+Tempo: 120
+
+---
+
+| name | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| RH | @1v100o4 c4 d4 | e4 f4 | g4 a4 | b4 >c4 |
+| LH | @1v100o3 c2 | f2 | g2 | c2 |
+`;
 
 interface EditorProps {
   value: string;
   onChange: (val: string) => void;
   onConvert: () => void;
   isConverting: boolean;
-  selectedPreset: string;
-  onSelectPreset: (preset: Preset) => void;
+  currentTitle?: string;
+  onOpenPublicScores?: () => void;
+  onNewScore?: () => void;
   onSave?: () => void;
   onOpenTranscribe?: () => void;
 }
@@ -19,8 +42,9 @@ export const Editor: React.FC<EditorProps> = ({
   onChange,
   onConvert,
   isConverting,
-  selectedPreset,
-  onSelectPreset,
+  currentTitle,
+  onOpenPublicScores,
+  onNewScore,
   onSave,
   onOpenTranscribe,
 }) => {
@@ -86,25 +110,45 @@ export const Editor: React.FC<EditorProps> = ({
       {/* ツールバー */}
       <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-900/90 border-b border-slate-800 gap-2">
         <div className="flex items-center space-x-2">
-          <label htmlFor="preset-select" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            プリセット:
-          </label>
-          <select
-            id="preset-select"
-            value={selectedPreset}
-            onChange={(e) => {
-              const p = PRESETS.find((item) => item.id === e.target.value);
-              if (p) onSelectPreset(p);
-            }}
-            className="bg-slate-950 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none cursor-pointer"
+          {/* 公開楽譜から開くボタン */}
+          {onOpenPublicScores && (
+            <button
+              onClick={onOpenPublicScores}
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition cursor-pointer shadow-sm"
+              title="D1に保存された公開楽譜やプリセットから選んで読み込みます"
+            >
+              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+              <span>公開楽譜を選ぶ</span>
+            </button>
+          )}
+
+          {/* テンプレート挿入ボタン */}
+          <button
+            onClick={() => onChange(DEFAULT_SCORE_TEMPLATE)}
+            className="inline-flex items-center space-x-1 px-2 py-1.5 bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white text-xs rounded-lg transition cursor-pointer border border-slate-700/60"
+            title="基本的なMMLの雛形を挿入します"
           >
-            {PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-            <option value="custom">カスタム編集</option>
-          </select>
+            <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">ひな形</span>
+          </button>
+
+          {/* 新規作成 / クリア */}
+          {value.trim() && (
+            <button
+              onClick={() => (onNewScore ? onNewScore() : onChange(''))}
+              className="inline-flex items-center space-x-1 px-2 py-1.5 bg-slate-800/60 hover:bg-red-950/60 text-slate-400 hover:text-red-300 text-xs rounded-lg transition cursor-pointer border border-transparent hover:border-red-800/60"
+              title="エディタをクリアして新しい楽譜を作成"
+            >
+              <FilePlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">クリア</span>
+            </button>
+          )}
+
+          {currentTitle && (
+            <span className="text-xs text-indigo-300 font-medium px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md truncate max-w-[140px] sm:max-w-[200px]">
+              {currentTitle}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -200,10 +244,53 @@ export const Editor: React.FC<EditorProps> = ({
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
           wrap="off"
-          placeholder="| name | 1 | 2 |&#10;|---|---|---|&#10;| A | cdef | gabc |"
+          placeholder="ここに入力、または「公開楽譜を選ぶ」「画像からMML生成」「ひな形」をお試しください"
           spellCheck={false}
-          className="w-full flex-1 min-w-0 min-h-[380px] p-4 pl-3 bg-transparent font-mono text-xs sm:text-sm text-slate-200 resize-none outline-none leading-relaxed selection:bg-indigo-500/30 overflow-auto whitespace-pre block"
+          className="w-full flex-1 min-w-0 min-h-[380px] p-4 pl-3 bg-transparent font-mono text-xs sm:text-sm text-slate-200 resize-none outline-none leading-relaxed selection:bg-indigo-500/30 overflow-auto whitespace-pre block placeholder:text-slate-600"
         />
+
+        {/* 空の時のクイックスタートガイド */}
+        {!value.trim() && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 text-center">
+            <Music className="w-10 h-10 text-slate-700 mb-3" />
+            <p className="text-sm font-medium text-slate-300 mb-1">
+              楽譜 Markdown を入力または選択してください
+            </p>
+            <p className="text-xs text-slate-500 mb-4 max-w-sm">
+              五線譜の画像からAIで自動生成するか、公開楽譜（プリセット）を選んでプレビューできます。
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 pointer-events-auto">
+              {onOpenPublicScores && (
+                <button
+                  type="button"
+                  onClick={onOpenPublicScores}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>公開楽譜を選ぶ</span>
+                </button>
+              )}
+              {onOpenTranscribe && (
+                <button
+                  type="button"
+                  onClick={onOpenTranscribe}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition flex items-center space-x-1.5 cursor-pointer shadow-md shadow-indigo-600/20"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>画像からMML生成</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onChange(DEFAULT_SCORE_TEMPLATE)}
+                className="px-3 py-1.5 bg-slate-800/60 hover:bg-slate-800 text-slate-300 text-xs rounded-lg border border-slate-700/60 transition flex items-center space-x-1.5 cursor-pointer"
+              >
+                <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+                <span>ひな形を入力</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ステータスバー */}

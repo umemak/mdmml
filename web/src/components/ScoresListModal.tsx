@@ -28,6 +28,7 @@ interface ScoresListModalProps {
   onNewScore: () => void;
   currentScoreId: string | null;
   onShowToast: (msg: string) => void;
+  initialTab?: 'my' | 'public';
 }
 
 export const ScoresListModal: React.FC<ScoresListModalProps> = ({
@@ -37,8 +38,9 @@ export const ScoresListModal: React.FC<ScoresListModalProps> = ({
   onNewScore,
   currentScoreId,
   onShowToast,
+  initialTab = 'my',
 }) => {
-  const [tab, setTab] = useState<'my' | 'public'>('my');
+  const [tab, setTab] = useState<'my' | 'public'>(initialTab);
   const [myScores, setMyScores] = useState<ScoreItem[]>([]);
   const [publicScores, setPublicScores] = useState<ScoreItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,6 +67,12 @@ export const ScoresListModal: React.FC<ScoresListModalProps> = ({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   useEffect(() => {
     if (isOpen) {

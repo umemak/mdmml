@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { initWasm, convertToSMF } from './wasm';
 import { MidiAudioPlayer, MidiMetadata, PlayerState } from './player';
-import { PRESETS, Preset } from './presets';
 import { Editor } from './components/Editor';
 import { PlayerControls } from './components/PlayerControls';
 import { CheatSheet } from './components/CheatSheet';
@@ -40,8 +39,7 @@ export function App() {
   const [wasmReady, setWasmReady] = useState(false);
   const [wasmError, setWasmError] = useState<string | null>(null);
 
-  const [markdown, setMarkdown] = useState(PRESETS[0].markdown);
-  const [selectedPreset, setSelectedPreset] = useState<string>(PRESETS[0].id);
+  const [markdown, setMarkdown] = useState<string>('');
 
   const [isConverting, setIsConverting] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
@@ -63,6 +61,7 @@ export function App() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [scoresListModalOpen, setScoresListModalOpen] = useState(false);
+  const [scoresListTab, setScoresListTab] = useState<'my' | 'public'>('public');
   const [transcribeModalOpen, setTranscribeModalOpen] = useState(false);
   const [currentScoreId, setCurrentScoreId] = useState<string | null>(null);
   const [currentScoreTitle, setCurrentScoreTitle] = useState<string>('');
@@ -137,6 +136,14 @@ export function App() {
     async (srcMarkdown: string) => {
       if (!wasmReady) return;
 
+      if (!srcMarkdown.trim()) {
+        setSmfBytes(null);
+        setMetadata(null);
+        setConvertError(null);
+        setIsConverting(false);
+        return;
+      }
+
       setIsConverting(true);
       setConvertError(null);
 
@@ -178,24 +185,19 @@ export function App() {
           setCurrentScoreIsPublic(detail.is_public);
           setIsScoreOwner(Boolean(detail.is_owner));
           setMarkdown(detail.content);
-          setSelectedPreset('custom');
           handleConvert(detail.content);
           showToast(`「${detail.title}」を読み込みました`);
         })
         .catch((err) => {
           console.error('Failed to load score from URL parameter', err);
           showToast('楽譜の読み込みに失敗しました（非公開または存在しません）');
-          handleConvert(markdown);
         });
-    } else {
-      handleConvert(markdown);
     }
   }, [wasmReady, handleConvert]);
 
   // Markdown 変更時のハンドラ（デバウンスで自動変換）
   const handleMarkdownChange = (newVal: string) => {
     setMarkdown(newVal);
-    setSelectedPreset('custom');
 
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
@@ -206,19 +208,32 @@ export function App() {
     }, 600);
   };
 
-  // プリセット選択時
-  const handleSelectPreset = (preset: Preset) => {
-    setSelectedPreset(preset.id);
-    setMarkdown(preset.markdown);
+  // 新規スコア作成（クリア）
+  const handleNewScore = () => {
     setCurrentScoreId(null);
     setCurrentScoreTitle('');
     setCurrentScoreIsPublic(false);
     setIsScoreOwner(true);
-    // URLのクエリパラメータをクリア
+    setMarkdown('');
+    setSmfBytes(null);
+    setMetadata(null);
+    setConvertError(null);
     if (window.location.search) {
       window.history.replaceState({}, '', window.location.pathname);
     }
-    handleConvert(preset.markdown);
+    showToast('エディタをクリアしました');
+  };
+
+  // 公開楽譜モーダルを開く
+  const handleOpenPublicScores = () => {
+    setScoresListTab('public');
+    setScoresListModalOpen(true);
+  };
+
+  // マイ楽譜モーダルを開く
+  const handleOpenMyScores = () => {
+    setScoresListTab('my');
+    setScoresListModalOpen(true);
   };
 
   // 保存ボタン押下
@@ -261,28 +276,12 @@ export function App() {
       setCurrentScoreIsPublic(detail.is_public);
       setIsScoreOwner(Boolean(detail.is_owner));
       setMarkdown(detail.content);
-      setSelectedPreset('custom');
       window.history.replaceState({}, '', `?score=${detail.id}`);
       handleConvert(detail.content);
       showToast(`「${detail.title}」を読み込みました`);
     } catch (err: any) {
       alert('楽譜の読み込みに失敗しました: ' + (err.message || ''));
     }
-  };
-
-  // 新規スコア作成
-  const handleNewScore = () => {
-    setCurrentScoreId(null);
-    setCurrentScoreTitle('');
-    setCurrentScoreIsPublic(false);
-    setIsScoreOwner(true);
-    setMarkdown(PRESETS[0].markdown);
-    setSelectedPreset(PRESETS[0].id);
-    if (window.location.search) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-    handleConvert(PRESETS[0].markdown);
-    showToast('新規の楽譜を開始しました');
   };
 
   // ログアウト処理
@@ -309,7 +308,6 @@ export function App() {
     wasAppended?: boolean
   ) => {
     setMarkdown(generatedMarkdown);
-    setSelectedPreset('custom');
 
     // Front Matter からタイトルを抽出
     const titleMatch = generatedMarkdown.match(/Title:\s*["']?([^"'\n\r]+)["']?/i);
@@ -415,7 +413,16 @@ export function App() {
                 </button>
 
                 <button
-                  onClick={() => setScoresListModalOpen(true)}
+                  onClick={handleOpenPublicScores}
+                  className="px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition flex items-center space-x-1 cursor-pointer"
+                  title="公開楽譜一覧を見る"
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="hidden sm:inline">公開楽譜</span>
+                </button>
+
+                <button
+                  onClick={handleOpenMyScores}
                   className="px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition flex items-center space-x-1 cursor-pointer"
                   title="保存した楽譜を開く"
                 >
@@ -443,7 +450,7 @@ export function App() {
             ) : (
               <div className="flex items-center space-x-1.5">
                 <button
-                  onClick={() => setScoresListModalOpen(true)}
+                  onClick={handleOpenPublicScores}
                   className="px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition flex items-center space-x-1.5 cursor-pointer border border-slate-700"
                   title="公開楽譜一覧を見る"
                 >
@@ -584,8 +591,9 @@ export function App() {
               onChange={handleMarkdownChange}
               onConvert={() => handleConvert(markdown)}
               isConverting={isConverting}
-              selectedPreset={selectedPreset}
-              onSelectPreset={handleSelectPreset}
+              currentTitle={currentScoreTitle || metadata?.title}
+              onOpenPublicScores={handleOpenPublicScores}
+              onNewScore={handleNewScore}
               onSave={handleOpenSaveModal}
               onOpenTranscribe={() => setTranscribeModalOpen(true)}
             />
@@ -665,6 +673,7 @@ export function App() {
       <ScoresListModal
         isOpen={scoresListModalOpen}
         onClose={() => setScoresListModalOpen(false)}
+        initialTab={scoresListTab}
         onSelectScore={handleSelectSavedScore}
         onNewScore={handleNewScore}
         currentScoreId={currentScoreId}
