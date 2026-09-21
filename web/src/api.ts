@@ -8,12 +8,14 @@ export interface User {
 export interface ScoreItem {
   id: string;
   title: string;
+  is_public: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export interface ScoreDetail extends ScoreItem {
   content: string;
+  is_owner?: boolean;
 }
 
 export async function fetchCurrentUser(): Promise<User | null> {
@@ -67,6 +69,15 @@ export async function fetchScores(): Promise<ScoreItem[]> {
   return data.scores || [];
 }
 
+export async function fetchPublicScores(): Promise<ScoreItem[]> {
+  const res = await fetch('/api/public-scores');
+  const data = (await res.json()) as { scores?: ScoreItem[]; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error || '公開楽譜一覧の取得に失敗しました');
+  }
+  return data.scores || [];
+}
+
 export async function fetchScoreDetail(id: string): Promise<ScoreDetail> {
   const res = await fetch(`/api/scores/${id}`);
   const data = (await res.json()) as { score?: ScoreDetail; error?: string };
@@ -76,11 +87,15 @@ export async function fetchScoreDetail(id: string): Promise<ScoreDetail> {
   return data.score!;
 }
 
-export async function createScore(title: string, content: string): Promise<ScoreDetail> {
+export async function createScore(
+  title: string,
+  content: string,
+  isPublic = false
+): Promise<ScoreDetail> {
   const res = await fetch('/api/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, is_public: isPublic }),
   });
   const data = (await res.json()) as { score?: ScoreDetail; error?: string };
   if (!res.ok) {
@@ -89,11 +104,16 @@ export async function createScore(title: string, content: string): Promise<Score
   return data.score!;
 }
 
-export async function updateScore(id: string, title: string, content: string): Promise<ScoreDetail> {
+export async function updateScore(
+  id: string,
+  title?: string,
+  content?: string,
+  isPublic?: boolean
+): Promise<ScoreDetail> {
   const res = await fetch(`/api/scores/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, is_public: isPublic }),
   });
   const data = (await res.json()) as { score?: ScoreDetail; error?: string };
   if (!res.ok) {

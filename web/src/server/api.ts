@@ -146,91 +146,159 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
   }
 
   // --- MML Scores API ---
+
+  // 公開楽譜一覧取得 (GET /api/public-scores) - 認証不要
+  if (path === '/api/public-scores' && method === 'GET') {
+    const { results } = await env.DB.prepare(
+      'SELECT id, title, created_at, updated_at FROM scores WHERE is_public = 1 ORDER BY updated_at DESC LIMIT 50'
+    ).all<{ id: string; title: string; created_at: string; updated_at: string }>();
+
+    return json({ scores: results || [] });
+  }
+
+  // 個別楽譜取得 (GET /api/scores/:id) - 公開スコアなら未ログインでも取得可能
+  const scoreMatch = path.match(/^\/api\/scores\/([^/]+)$/);
+  if (scoreMatch && method === 'GET') {
+    const scoreId = scoreMatch[1];
+    const currentUser = await getCurrentUser(request, env.DB);
+
+    const score = await env.DB.prepare(
+      'SELECT id, user_id, title, content, is_public, created_at, updated_at FROM scores WHERE id = ?'
+    )
+      .bind(scoreId)
+      .first<{
+        id: string;
+        user_id: string;
+        title: string;
+        content: string;
+        is_public: number;
+        created_at: string;
+        updated_at: string;
+      }>();
+
+    if (!score) {
+      return json({ error: '楽譜が見つかりません' }, 404);
+    }
+
+    const isOwner = currentUser?.id === score.user_id;
+
+    // 非公開かつオーナーでない場合は 404/403
+    if (!score.is_public && !isOwner) {
+      return json({ error: 'この楽譜は非公開です' }, 403);
+    }
+
+    return json({
+      score: {
+        id: score.id,
+        title: score.title,
+        content: score.content,
+        is_public: Boolean(score.is_public),
+        is_owner: isOwner,
+        created_at: score.created_at,
+        updated_at: score.updated_at,
+      },
+    });
+  }
+
   // これ以降は認証が必要
   const currentUser = await getCurrentUser(request, env.DB);
   if (!currentUser) {
     return json({ error: '認証が必要です。ログインしてください。' }, 401);
   }
 
-  // スコア一覧取得 (GET /api/scores)
+  // 自分のスコア一覧取得 (GET /api/scores)
   if (path === '/api/scores' && method === 'GET') {
     const { results } = await env.DB.prepare(
-      'SELECT id, title, created_at, updated_at FROM scores WHERE user_id = ? ORDER BY updated_at DESC'
+      'SELECT id, title, is_public, created_at, updated_at FROM scores WHERE user_id = ? ORDER BY updated_at DESC'
     )
       .bind(currentUser.id)
-      .all<{ id: string; title: string; created_at: string; updated_at: string }>();
+      .all<{ id: string; title: string; is_public: number; created_at: string; updated_at: string }>();
 
-    return json({ scores: results || [] });
+    const scores = (results || []).map((s) => ({
+      ...s,
+      is_public: Boolean(s.is_public),
+    }));
+
+    return json({ scores });
   }
 
   // スコア新規保存 (POST /api/scores)
   if (path === '/api/scores' && method === 'POST') {
     try {
-      const body = (await request.json()) as { title?: string; content?: string };
+      const body = (await request.json()) as { title?: string; content?: string; is_public?: boolean };
       const title = body.title?.trim() || '無題の楽譜';
       const content = body.content ?? '';
+      const isPublic = body.is_public ? 1 : 0;
 
       const scoreId = crypto.randomUUID();
       const now = new Date().toISOString();
 
       await env.DB.prepare(
-        'INSERT INTO scores (id, user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO scores (id, user_id, title, content, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-        .bind(scoreId, currentUser.id, title, content, now, now)
+        .bind(scoreId, currentUser.id, title, content, isPublic, now, now)
         .run();
 
-      return json({ score: { id: scoreId, title, content, created_at: now, updated_at: now } }, 201);
+      return json(
+        {
+          score: {
+            id: scoreId,
+            title,
+            content,
+            is_public: Boolean(isPublic),
+            is_owner: true,
+            created_at: now,
+            updated_at: now,
+          },
+        },
+        201
+      );
     } catch (err: any) {
       return json({ error: '保存に失敗しました: ' + (err.message || '') }, 500);
     }
   }
 
-  // /api/scores/:id へのルーティング
-  const scoreMatch = path.match(/^\/api\/scores\/([^/]+)$/);
+  // /api/scores/:id の更新・削除
   if (scoreMatch) {
     const scoreId = scoreMatch[1];
-
-    // スコア詳細取得 (GET /api/scores/:id)
-    if (method === 'GET') {
-      const score = await env.DB.prepare(
-        'SELECT id, title, content, created_at, updated_at FROM scores WHERE id = ? AND user_id = ?'
-      )
-        .bind(scoreId, currentUser.id)
-        .first<{ id: string; title: string; content: string; created_at: string; updated_at: string }>();
-
-      if (!score) {
-        return json({ error: '楽譜が見つかりません' }, 404);
-      }
-      return json({ score });
-    }
 
     // スコア更新 (PUT /api/scores/:id)
     if (method === 'PUT') {
       try {
-        const body = (await request.json()) as { title?: string; content?: string };
+        const body = (await request.json()) as { title?: string; content?: string; is_public?: boolean };
         const now = new Date().toISOString();
 
-        // 存在確認
+        // 存在確認 & 所有権チェック
         const existing = await env.DB.prepare(
-          'SELECT id, title, content FROM scores WHERE id = ? AND user_id = ?'
+          'SELECT id, title, content, is_public FROM scores WHERE id = ? AND user_id = ?'
         )
           .bind(scoreId, currentUser.id)
-          .first<{ id: string; title: string; content: string }>();
+          .first<{ id: string; title: string; content: string; is_public: number }>();
 
         if (!existing) {
-          return json({ error: '楽譜が見つかりません' }, 404);
+          return json({ error: '楽譜が見つかりません、または編集権限がありません' }, 404);
         }
 
         const newTitle = body.title !== undefined ? body.title.trim() || '無題の楽譜' : existing.title;
         const newContent = body.content !== undefined ? body.content : existing.content;
+        const newIsPublic = body.is_public !== undefined ? (body.is_public ? 1 : 0) : existing.is_public;
 
         await env.DB.prepare(
-          'UPDATE scores SET title = ?, content = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+          'UPDATE scores SET title = ?, content = ?, is_public = ?, updated_at = ? WHERE id = ? AND user_id = ?'
         )
-          .bind(newTitle, newContent, now, scoreId, currentUser.id)
+          .bind(newTitle, newContent, newIsPublic, now, scoreId, currentUser.id)
           .run();
 
-        return json({ score: { id: scoreId, title: newTitle, content: newContent, updated_at: now } });
+        return json({
+          score: {
+            id: scoreId,
+            title: newTitle,
+            content: newContent,
+            is_public: Boolean(newIsPublic),
+            is_owner: true,
+            updated_at: now,
+          },
+        });
       } catch (err: any) {
         return json({ error: '更新に失敗しました: ' + (err.message || '') }, 500);
       }

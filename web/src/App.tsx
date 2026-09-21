@@ -11,6 +11,10 @@ import {
   FolderOpen,
   CheckCircle2,
   Database,
+  Globe,
+  Lock,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { initWasm, convertToSMF } from './wasm';
 import { MidiAudioPlayer, MidiMetadata, PlayerState } from './player';
@@ -59,7 +63,10 @@ export function App() {
   const [scoresListModalOpen, setScoresListModalOpen] = useState(false);
   const [currentScoreId, setCurrentScoreId] = useState<string | null>(null);
   const [currentScoreTitle, setCurrentScoreTitle] = useState<string>('');
+  const [currentScoreIsPublic, setCurrentScoreIsPublic] = useState<boolean>(false);
+  const [isScoreOwner, setIsScoreOwner] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
 
   const playerRef = useRef<MidiAudioPlayer | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
@@ -154,9 +161,30 @@ export function App() {
     [wasmReady]
   );
 
-  // Wasm準備完了時に初期プリセットを即変換
+  // URLパラメータ（?score=<id>）による楽譜自動ロード
   useEffect(() => {
-    if (wasmReady) {
+    if (!wasmReady) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const scoreId = params.get('score') || params.get('s');
+    if (scoreId) {
+      fetchScoreDetail(scoreId)
+        .then((detail) => {
+          setCurrentScoreId(detail.id);
+          setCurrentScoreTitle(detail.title);
+          setCurrentScoreIsPublic(detail.is_public);
+          setIsScoreOwner(Boolean(detail.is_owner));
+          setMarkdown(detail.content);
+          setSelectedPreset('custom');
+          handleConvert(detail.content);
+          showToast(`「${detail.title}」を読み込みました`);
+        })
+        .catch((err) => {
+          console.error('Failed to load score from URL parameter', err);
+          showToast('楽譜の読み込みに失敗しました（非公開または存在しません）');
+          handleConvert(markdown);
+        });
+    } else {
       handleConvert(markdown);
     }
   }, [wasmReady, handleConvert]);
@@ -181,6 +209,12 @@ export function App() {
     setMarkdown(preset.markdown);
     setCurrentScoreId(null);
     setCurrentScoreTitle('');
+    setCurrentScoreIsPublic(false);
+    setIsScoreOwner(true);
+    // URLのクエリパラメータをクリア
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     handleConvert(preset.markdown);
   };
 
@@ -194,19 +228,24 @@ export function App() {
     setSaveModalOpen(true);
   };
 
-  // スコア保存処理
-  const handleSaveScore = async (title: string, asNew: boolean) => {
+  // スコア保存処理（公開/非公開設定対応）
+  const handleSaveScore = async (title: string, asNew: boolean, isPublic: boolean) => {
     if (!currentUser) return;
 
     if (asNew || !currentScoreId) {
-      const saved = await createScore(title, markdown);
+      const saved = await createScore(title, markdown, isPublic);
       setCurrentScoreId(saved.id);
       setCurrentScoreTitle(saved.title);
-      showToast(`「${saved.title}」をD1に保存しました`);
+      setCurrentScoreIsPublic(saved.is_public);
+      setIsScoreOwner(true);
+      // URLにIDを反映
+      window.history.replaceState({}, '', `?score=${saved.id}`);
+      showToast(`「${saved.title}」をD1に保存しました (${isPublic ? '公開' : '非公開'})`);
     } else {
-      const updated = await updateScore(currentScoreId, title, markdown);
+      const updated = await updateScore(currentScoreId, title, markdown, isPublic);
       setCurrentScoreTitle(updated.title);
-      showToast(`「${updated.title}」を上書き保存しました`);
+      setCurrentScoreIsPublic(updated.is_public);
+      showToast(`「${updated.title}」を更新しました (${isPublic ? '公開' : '非公開'})`);
     }
   };
 
@@ -216,8 +255,11 @@ export function App() {
       const detail = await fetchScoreDetail(scoreId);
       setCurrentScoreId(detail.id);
       setCurrentScoreTitle(detail.title);
+      setCurrentScoreIsPublic(detail.is_public);
+      setIsScoreOwner(Boolean(detail.is_owner));
       setMarkdown(detail.content);
       setSelectedPreset('custom');
+      window.history.replaceState({}, '', `?score=${detail.id}`);
       handleConvert(detail.content);
       showToast(`「${detail.title}」を読み込みました`);
     } catch (err: any) {
@@ -229,8 +271,13 @@ export function App() {
   const handleNewScore = () => {
     setCurrentScoreId(null);
     setCurrentScoreTitle('');
+    setCurrentScoreIsPublic(false);
+    setIsScoreOwner(true);
     setMarkdown(PRESETS[0].markdown);
     setSelectedPreset(PRESETS[0].id);
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     handleConvert(PRESETS[0].markdown);
     showToast('新規の楽譜を開始しました');
   };
@@ -240,6 +287,16 @@ export function App() {
     await logout();
     setCurrentUser(null);
     showToast('ログアウトしました');
+  };
+
+  // 共有URLコピー
+  const handleCopyCurrentShareUrl = async () => {
+    if (!currentScoreId) return;
+    const url = `${window.location.origin}/?score=${currentScoreId}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedShareUrl(true);
+    showToast('共有URLをコピーしました！');
+    setTimeout(() => setCopiedShareUrl(false), 2500);
   };
 
   // MIDI ダウンロード
@@ -300,7 +357,7 @@ export function App() {
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">
-                    {currentScoreId ? '上書き保存' : 'D1に保存'}
+                    {currentScoreId && isScoreOwner ? '上書き保存' : 'D1に保存'}
                   </span>
                   <span className="sm:hidden">保存</span>
                 </button>
@@ -333,6 +390,14 @@ export function App() {
               </div>
             ) : (
               <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={() => setScoresListModalOpen(true)}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition flex items-center space-x-1.5 cursor-pointer border border-slate-700"
+                  title="公開楽譜一覧を見る"
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>公開楽譜</span>
+                </button>
                 <button
                   onClick={() => {
                     setAuthModalMode('login');
@@ -380,14 +445,59 @@ export function App() {
 
       {/* メインコンテンツ */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* 現在編集中ラベル */}
+        {/* 現在編集中ラベル & 公開共有ステータス */}
         {currentScoreTitle && (
-          <div className="flex items-center space-x-2 text-xs bg-indigo-950/40 border border-indigo-800/50 text-indigo-300 px-3.5 py-2 rounded-xl">
-            <Music className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span>
-              編集中: <strong className="text-white font-medium">{currentScoreTitle}</strong>
-              {currentScoreId && ' (Cloudflare D1に保存済み)'}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-indigo-950/40 border border-indigo-800/50 text-indigo-300 px-3.5 py-2 rounded-xl text-xs">
+            <div className="flex items-center space-x-2">
+              <Music className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>
+                編集中: <strong className="text-white font-medium">{currentScoreTitle}</strong>
+              </span>
+
+              {/* 公開/非公開ステータス */}
+              {currentScoreId && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono flex items-center space-x-1 border ${
+                    currentScoreIsPublic
+                      ? 'bg-cyan-950/60 border-cyan-700/60 text-cyan-300'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {currentScoreIsPublic ? (
+                    <>
+                      <Globe className="w-3 h-3 text-cyan-400" />
+                      <span>公開中</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3 text-slate-400" />
+                      <span>非公開</span>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+
+            {/* 公開中の場合の共有リンクコピーボタン */}
+            {currentScoreId && currentScoreIsPublic && (
+              <button
+                onClick={handleCopyCurrentShareUrl}
+                className="px-2.5 py-1 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-700/60 text-cyan-300 rounded-lg transition flex items-center space-x-1.5 cursor-pointer"
+                title="共有URLをコピー"
+              >
+                {copiedShareUrl ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>コピー完了!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>共有URLをコピー</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 
@@ -495,7 +605,8 @@ export function App() {
         onClose={() => setSaveModalOpen(false)}
         onSave={handleSaveScore}
         initialTitle={currentScoreTitle || metadata?.title || '無題の楽譜'}
-        isEditingExisting={Boolean(currentScoreId)}
+        initialIsPublic={currentScoreIsPublic}
+        isEditingExisting={Boolean(currentScoreId && isScoreOwner)}
       />
 
       <ScoresListModal
@@ -504,6 +615,7 @@ export function App() {
         onSelectScore={handleSelectSavedScore}
         onNewScore={handleNewScore}
         currentScoreId={currentScoreId}
+        onShowToast={showToast}
       />
     </div>
   );
