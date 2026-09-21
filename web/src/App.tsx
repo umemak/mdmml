@@ -15,6 +15,7 @@ import {
   Lock,
   Share2,
   Check,
+  Sparkles,
 } from 'lucide-react';
 import { initWasm, convertToSMF } from './wasm';
 import { MidiAudioPlayer, MidiMetadata, PlayerState } from './player';
@@ -25,6 +26,7 @@ import { CheatSheet } from './components/CheatSheet';
 import { AuthModal } from './components/AuthModal';
 import { SaveScoreModal } from './components/SaveScoreModal';
 import { ScoresListModal } from './components/ScoresListModal';
+import { TranscribeModal } from './components/TranscribeModal';
 import {
   fetchCurrentUser,
   logout,
@@ -61,6 +63,7 @@ export function App() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [scoresListModalOpen, setScoresListModalOpen] = useState(false);
+  const [transcribeModalOpen, setTranscribeModalOpen] = useState(false);
   const [currentScoreId, setCurrentScoreId] = useState<string | null>(null);
   const [currentScoreTitle, setCurrentScoreTitle] = useState<string>('');
   const [currentScoreIsPublic, setCurrentScoreIsPublic] = useState<boolean>(false);
@@ -299,6 +302,26 @@ export function App() {
     setTimeout(() => setCopiedShareUrl(false), 2500);
   };
 
+  // AIによる楽譜画像からの変換成功時
+  const handleTranscribeSuccess = (generatedMarkdown: string) => {
+    setMarkdown(generatedMarkdown);
+    setSelectedPreset('custom');
+    setCurrentScoreId(null);
+
+    // Front Matter からタイトルを抽出
+    const titleMatch = generatedMarkdown.match(/Title:\s*["']?([^"'\n\r]+)["']?/i);
+    const extractedTitle = titleMatch ? titleMatch[1].trim() : 'AI生成楽譜';
+    setCurrentScoreTitle(extractedTitle);
+    setCurrentScoreIsPublic(false);
+    setIsScoreOwner(true);
+
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    handleConvert(generatedMarkdown);
+    showToast(`楽譜画像を「${extractedTitle}」として読み込みました！`);
+  };
+
   // MIDI ダウンロード
   const handleDownload = () => {
     if (!smfBytes) return;
@@ -347,6 +370,16 @@ export function App() {
           </div>
 
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* AI 楽譜画像変換ボタン */}
+            <button
+              onClick={() => setTranscribeModalOpen(true)}
+              className="px-2.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-md shadow-indigo-500/20 border border-indigo-400/30"
+              title="譜面画像をアップロードしてAIでMMLを自動生成"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+              <span className="hidden sm:inline">画像からMML生成</span>
+            </button>
+
             {/* 認証 & D1 楽譜操作エリア */}
             {currentUser ? (
               <div className="flex items-center space-x-1.5 sm:space-x-2 bg-slate-900/80 border border-slate-800 px-2 py-1 rounded-xl">
@@ -535,6 +568,7 @@ export function App() {
               selectedPreset={selectedPreset}
               onSelectPreset={handleSelectPreset}
               onSave={handleOpenSaveModal}
+              onOpenTranscribe={() => setTranscribeModalOpen(true)}
             />
             <CheatSheet />
           </div>
@@ -616,6 +650,12 @@ export function App() {
         onNewScore={handleNewScore}
         currentScoreId={currentScoreId}
         onShowToast={showToast}
+      />
+
+      <TranscribeModal
+        isOpen={transcribeModalOpen}
+        onClose={() => setTranscribeModalOpen(false)}
+        onSuccess={handleTranscribeSuccess}
       />
     </div>
   );

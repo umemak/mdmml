@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   SESSION_MAX_AGE,
 } from './auth';
+import { transcribeScoreImage } from './ai';
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   const h = new Headers(headers);
@@ -26,6 +27,40 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
   // ヘルスチェック
   if (path === '/api/health') {
     return json({ status: 'ok', service: 'mdmml' });
+  }
+
+  // --- AI 楽譜画像変換 API ---
+
+  // AI設定状況確認 (GET /api/ai/config)
+  if (path === '/api/ai/config' && method === 'GET') {
+    return json({ hasServerKey: Boolean(env.GEMINI_API_KEY) });
+  }
+
+  // 譜面画像 -> MML 変換 (POST /api/ai/transcribe)
+  if (path === '/api/ai/transcribe' && method === 'POST') {
+    try {
+      const body = (await request.json()) as { image?: string; apiKey?: string };
+      const image = body.image;
+      const apiKey = body.apiKey?.trim() || env.GEMINI_API_KEY;
+
+      if (!image) {
+        return json({ error: '画像データが指定されていません' }, 400);
+      }
+      if (!apiKey) {
+        return json(
+          {
+            error:
+              'Gemini APIキーが設定されていません。Google AI Studioで取得したAPIキーを入力してください。',
+          },
+          400
+        );
+      }
+
+      const markdown = await transcribeScoreImage(image, apiKey);
+      return json({ markdown });
+    } catch (err: any) {
+      return json({ error: '楽譜の解析・変換に失敗しました: ' + (err.message || '') }, 500);
+    }
   }
 
   // --- Auth API ---

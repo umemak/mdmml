@@ -131,3 +131,30 @@ export async function deleteScore(id: string): Promise<void> {
     throw new Error(data.error || '削除に失敗しました');
   }
 }
+
+export async function fetchAiConfig(): Promise<{ hasServerKey: boolean }> {
+  try {
+    const res = await fetch('/api/ai/config');
+    if (!res.ok) return { hasServerKey: false };
+    const data = (await res.json()) as { hasServerKey?: boolean };
+    return { hasServerKey: Boolean(data.hasServerKey) };
+  } catch {
+    return { hasServerKey: false };
+  }
+}
+
+export async function transcribeScoreImageApi(
+  image: string,
+  apiKey?: string
+): Promise<{ markdown: string }> {
+  const res = await fetch('/api/ai/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image, apiKey }),
+  });
+  const data = (await res.json()) as { markdown?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error || '楽譜の解析に失敗しました');
+  }
+  return { markdown: data.markdown! };
+}

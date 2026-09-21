@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { RefreshCw, Copy, Check, TableProperties, Save } from 'lucide-react';
+import { RefreshCw, Copy, Check, TableProperties, Save, Sparkles } from 'lucide-react';
 import { PRESETS, Preset } from '../presets';
 import { formatMarkdownTables } from '../utils/tableFormatter';
 
@@ -11,6 +11,7 @@ interface EditorProps {
   selectedPreset: string;
   onSelectPreset: (preset: Preset) => void;
   onSave?: () => void;
+  onOpenTranscribe?: () => void;
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -21,6 +22,7 @@ export const Editor: React.FC<EditorProps> = ({
   selectedPreset,
   onSelectPreset,
   onSave,
+  onOpenTranscribe,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
@@ -106,6 +108,18 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* AI楽譜読取ボタン */}
+          {onOpenTranscribe && (
+            <button
+              onClick={onOpenTranscribe}
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition cursor-pointer bg-gradient-to-r from-indigo-600/80 to-purple-600/80 hover:from-indigo-600 hover:to-purple-600 text-white shadow-sm border border-indigo-400/40"
+              title="譜面画像をアップロードしてAIでMMLを自動生成します"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+              <span>画像からMML生成</span>
+            </button>
+          )}
+
           {/* テーブル整形ボタン */}
           <button
             onClick={handleFormat}

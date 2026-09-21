@@ -4,6 +4,7 @@
 interface __BaseEnv_Env {
 	DB: D1Database;
 	ASSETS: Fetcher;
+	GEMINI_API_KEY?: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
