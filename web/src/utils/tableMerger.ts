@@ -1,13 +1,15 @@
 import { formatMarkdownTables } from './tableFormatter';
 
 interface ParsedTable {
+  tableStartIndex: number;
+  tableEndIndex: number;
   headerName: string;
-  measureCount: number;
+  measureNumbers: number[];
   parts: Array<{ name: string; measures: string[] }>;
 }
 
 /**
- * テーブル行から行配列（セル配列）を抽出します。
+ * テーブル行からセル配列を抽出します。
  */
 function parseRow(line: string): string[] {
   let trimmed = line.trim();
@@ -17,167 +19,186 @@ function parseRow(line: string): string[] {
 }
 
 /**
- * Markdown 文字列から MML テーブルを抽出・解析します。
+ * Markdown 文字列からすべての MML テーブルを抽出・解析します。
  */
-function parseMmlTable(markdown: string): {
-  tableStartIndex: number;
-  tableEndIndex: number;
-  parsed: ParsedTable | null;
-} {
+function parseAllMmlTables(markdown: string): ParsedTable[] {
   const lines = markdown.split('\n');
-  let tableStartIndex = -1;
-  let tableEndIndex = -1;
-  const tableLines: string[] = [];
+  const tables: ParsedTable[] = [];
+
+  let inTable = false;
+  let currentStartIndex = -1;
+  let currentTableLines: string[] = [];
+
+  const flush = (endIndex: number) => {
+    if (currentTableLines.length >= 3) {
+      const headerRow = parseRow(currentTableLines[0]);
+      const headerName = headerRow[0] || 'name';
+      const measureNumbers: number[] = [];
+
+      for (let c = 1; c < headerRow.length; c++) {
+        const num = parseInt(headerRow[c], 10);
+        if (!isNaN(num)) {
+          measureNumbers.push(num);
+        } else {
+          measureNumbers.push(measureNumbers.length + 1);
+        }
+      }
+
+      const parts: Array<{ name: string; measures: string[] }> = [];
+      for (let i = 2; i < currentTableLines.length; i++) {
+        const row = parseRow(currentTableLines[i]);
+        if (row.length === 0) continue;
+        const partName = row[0];
+        const measures = row.slice(1);
+        if (!partName) continue;
+        parts.push({ name: partName, measures });
+      }
+
+      tables.push({
+        tableStartIndex: currentStartIndex,
+        tableEndIndex: endIndex,
+        headerName,
+        measureNumbers,
+        parts,
+      });
+    }
+    currentTableLines = [];
+    currentStartIndex = -1;
+    inTable = false;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim().startsWith('|')) {
-      if (tableStartIndex === -1) tableStartIndex = i;
-      tableEndIndex = i;
-      tableLines.push(lines[i]);
-    } else if (tableStartIndex !== -1) {
-      break;
+      if (!inTable) {
+        inTable = true;
+        currentStartIndex = i;
+      }
+      currentTableLines.push(lines[i]);
+    } else if (inTable) {
+      flush(i - 1);
     }
   }
-
-  if (tableLines.length < 3) {
-    return { tableStartIndex: -1, tableEndIndex: -1, parsed: null };
+  if (inTable) {
+    flush(lines.length - 1);
   }
 
-  const headerRow = parseRow(tableLines[0]);
-  const headerName = headerRow[0] || 'name';
-
-  const parts: Array<{ name: string; measures: string[] }> = [];
-
-  for (let i = 2; i < tableLines.length; i++) {
-    const row = parseRow(tableLines[i]);
-    if (row.length === 0) continue;
-    const partName = row[0];
-    const measures = row.slice(1);
-    if (!partName) continue;
-    parts.push({ name: partName, measures });
-  }
-
-  const maxMeasures = Math.max(
-    headerRow.length - 1,
-    ...parts.map((p) => p.measures.length),
-    0
-  );
-
-  return {
-    tableStartIndex,
-    tableEndIndex,
-    parsed: {
-      headerName,
-      measureCount: maxMeasures,
-      parts,
-    },
-  };
+  return tables;
 }
 
 /**
- * 既存の楽譜 Markdown に、新規解析された楽譜 Markdown の小節を末尾に追加（マージ）します。
- * 小節番号は既存の最大小節番号から連番（例: 既存が1〜4小節なら次は5小節〜）で自動延長されます。
+ * 既存の楽譜 Markdown に、新規解析された楽譜 Markdown を「別の独立したテーブル」として下に追加します。
+ * 小節番号は既存の最大小節番号から続く連番（例: 1〜4小節の次は5〜8小節）に自動調整されます。
+ * mdmml は同一パート名の行を上から順に演奏するため、テーブルを分けることで高い可読性を保ちつつ完全な演奏が可能です。
  */
 export function mergeScoreMarkdowns(
   existingMarkdown: string,
   newMarkdown: string
 ): string {
-  const existingInfo = parseMmlTable(existingMarkdown);
-  const newInfo = parseMmlTable(newMarkdown);
+  const existingTables = parseAllMmlTables(existingMarkdown);
+  const newTables = parseAllMmlTables(newMarkdown);
 
-  // どちらかにテーブルが存在しない場合はフォールバック
-  if (!existingInfo.parsed) {
+  // テーブルが存在しない場合のフォールバック
+  if (existingTables.length === 0) {
     return newMarkdown;
   }
-  if (!newInfo.parsed) {
+  if (newTables.length === 0) {
     return existingMarkdown;
   }
 
-  const existingTable = existingInfo.parsed;
-  const newTable = newInfo.parsed;
+  // 既存テーブル群から最大小節番号を算出
+  let maxMeasure = 0;
+  let preferredHeaderName = 'name';
+  const existingPartNames: string[] = [];
 
-  const existingMeasureCount = existingTable.measureCount;
-  const newMeasureCount = newTable.measureCount;
-
-  // 新しいヘッダー（例: name | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8）
-  const totalMeasures = existingMeasureCount + newMeasureCount;
-  const newHeaderCols: string[] = [existingTable.headerName];
-  for (let m = 1; m <= totalMeasures; m++) {
-    newHeaderCols.push(String(m));
+  for (const t of existingTables) {
+    preferredHeaderName = t.headerName || preferredHeaderName;
+    for (const num of t.measureNumbers) {
+      if (num > maxMeasure) maxMeasure = num;
+    }
+    for (const p of t.parts) {
+      if (!existingPartNames.some((n) => n.toLowerCase() === p.name.toLowerCase())) {
+        existingPartNames.push(p.name);
+      }
+    }
   }
 
-  const separatorCols = newHeaderCols.map(() => '---');
+  // 新規側テーブル（基本的には1つ）の各小節をリナンバリングして独立テーブルとして整形
+  const newTableStrings: string[] = [];
 
-  // パートのマージ
-  // 1. 既存のパート順序を基準にする
-  const mergedParts: Array<{ name: string; measures: string[] }> = [];
-  const processedNewParts = new Set<string>();
-
-  for (const exp of existingTable.parts) {
-    // 既存パートと同じ名前の新規パートを検索（大文字小文字無視も考慮）
-    const matchedNew = newTable.parts.find(
-      (np) =>
-        np.name.toLowerCase() === exp.name.toLowerCase() &&
-        !processedNewParts.has(np.name)
+  for (const newTable of newTables) {
+    const measureCount = Math.max(
+      newTable.measureNumbers.length,
+      ...newTable.parts.map((p) => p.measures.length),
+      1
     );
 
-    let extendedMeasures: string[] = [...exp.measures];
-    // 既存小節数までパディング
-    while (extendedMeasures.length < existingMeasureCount) {
-      extendedMeasures.push('');
+    // 新しい小節番号ヘッダー (例: | name | 5 | 6 | 7 | 8 |)
+    const startMeasure = maxMeasure + 1;
+    const endMeasure = maxMeasure + measureCount;
+    maxMeasure = endMeasure;
+
+    const headerCols = [preferredHeaderName];
+    for (let m = startMeasure; m <= endMeasure; m++) {
+      headerCols.push(String(m));
+    }
+    const separatorCols = headerCols.map(() => '---');
+
+    const tableRows: string[] = [];
+    tableRows.push('| ' + headerCols.join(' | ') + ' |');
+    tableRows.push('| ' + separatorCols.join(' | ') + ' |');
+
+    // パート順序の決定: 既存テーブルのパート順を優先
+    const partsToOutput: Array<{ name: string; measures: string[] }> = [];
+    const usedNewPartNames = new Set<string>();
+
+    for (const epName of existingPartNames) {
+      const match = newTable.parts.find(
+        (np) =>
+          np.name.toLowerCase() === epName.toLowerCase() &&
+          !usedNewPartNames.has(np.name)
+      );
+      if (match) {
+        usedNewPartNames.add(match.name);
+        const paddedMeasures = [...match.measures];
+        while (paddedMeasures.length < measureCount) {
+          paddedMeasures.push('');
+        }
+        partsToOutput.push({ name: epName, measures: paddedMeasures });
+      }
     }
 
-    if (matchedNew) {
-      processedNewParts.add(matchedNew.name);
-      const newMeasures = [...matchedNew.measures];
-      while (newMeasures.length < newMeasureCount) {
-        newMeasures.push('');
-      }
-      extendedMeasures = extendedMeasures.concat(newMeasures);
-    } else {
-      // 新規側に存在しないパートは空セルで埋める
-      for (let i = 0; i < newMeasureCount; i++) {
-        extendedMeasures.push('');
+    // 新規側にしか存在しないパート
+    for (const np of newTable.parts) {
+      if (!usedNewPartNames.has(np.name)) {
+        const paddedMeasures = [...np.measures];
+        while (paddedMeasures.length < measureCount) {
+          paddedMeasures.push('');
+        }
+        partsToOutput.push({ name: np.name, measures: paddedMeasures });
       }
     }
 
-    mergedParts.push({ name: exp.name, measures: extendedMeasures });
-  }
-
-  // 2. 新規側にしか存在しないパートがあれば下に追加
-  for (const np of newTable.parts) {
-    if (!processedNewParts.has(np.name)) {
-      const leadingEmpty = new Array(existingMeasureCount).fill('');
-      const newMeasures = [...np.measures];
-      while (newMeasures.length < newMeasureCount) {
-        newMeasures.push('');
-      }
-      mergedParts.push({
-        name: np.name,
-        measures: leadingEmpty.concat(newMeasures),
-      });
+    for (const p of partsToOutput) {
+      tableRows.push('| ' + [p.name, ...p.measures].join(' | ') + ' |');
     }
+
+    newTableStrings.push(tableRows.join('\n'));
   }
 
-  // テーブル行を組み立て
-  const mergedTableLines: string[] = [];
-  mergedTableLines.push('| ' + newHeaderCols.join(' | ') + ' |');
-  mergedTableLines.push('| ' + separatorCols.join(' | ') + ' |');
-  for (const p of mergedParts) {
-    mergedTableLines.push('| ' + [p.name, ...p.measures].join(' | ') + ' |');
-  }
+  // 既存 Markdown の最後のテーブルの直後に新しいテーブルを挿入
+  const lastExistingTable = existingTables[existingTables.length - 1];
+  const existingLines = existingMarkdown.split('\n');
 
-  // 既存の Markdown のテーブル部分を置換
-  const originalLines = existingMarkdown.split('\n');
-  const beforeTable = originalLines.slice(0, existingInfo.tableStartIndex);
-  const afterTable = originalLines.slice(existingInfo.tableEndIndex + 1);
+  const beforeLines = existingLines.slice(0, lastExistingTable.tableEndIndex + 1);
+  const afterLines = existingLines.slice(lastExistingTable.tableEndIndex + 1);
 
   const combined = [
-    ...beforeTable,
-    ...mergedTableLines,
-    ...afterTable,
+    ...beforeLines,
+    '',
+    ...newTableStrings,
+    ...afterLines,
   ].join('\n');
 
-  // 列幅を綺麗にフォーマットして返却
+  // 各テーブルをフォーマットして返却
   return formatMarkdownTables(combined);
 }
