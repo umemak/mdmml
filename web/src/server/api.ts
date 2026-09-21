@@ -56,8 +56,8 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         );
       }
 
-      const markdown = await transcribeScoreImage(image, apiKey);
-      return json({ markdown });
+      const { markdown, modelUsed } = await transcribeScoreImage(image, apiKey);
+      return json({ markdown, modelUsed });
     } catch (err: any) {
       return json({ error: '楽譜の解析・変換に失敗しました: ' + (err.message || '') }, 500);
     }

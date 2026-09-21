@@ -37,10 +37,18 @@ Tempo: 120
 - マークダウンコードブロック（\`\`\`markdown ... \`\`\`）またはテキストのみを出力してください。
 - 前置きや挨拶、余計な解説文は一切含めないでください。直接 mdmml Markdown のみを出力してください。`;
 
+// 高負荷（high demand）や一時エラー時に順次フォールバックするモデル一覧
+const FALLBACK_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+];
+
 export async function transcribeScoreImage(
   base64DataUrl: string,
   apiKey: string
-): Promise<string> {
+): Promise<{ markdown: string; modelUsed: string }> {
   // data:image/png;base64,... 形式から mimeType と base64 データを分離
   let mimeType = 'image/jpeg';
   let base64Data = base64DataUrl;
@@ -50,9 +58,6 @@ export async function transcribeScoreImage(
     mimeType = match[1];
     base64Data = match[2];
   }
-
-  // Gemini 3.6 Flash API を呼び出し (推奨モデル)
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
 
   const requestBody = {
     contents: [
@@ -78,43 +83,61 @@ export async function transcribeScoreImage(
     },
   };
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    let errMsg = `Gemini API エラー (HTTP ${response.status})`;
+  for (const model of FALLBACK_MODELS) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
     try {
-      const errJson = JSON.parse(errText);
-      if (errJson.error?.message) {
-        errMsg = `Gemini API エラー: ${errJson.error.message}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        let errMsg = `Gemini (${model}) エラー (HTTP ${response.status})`;
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson.error?.message) {
+            errMsg = `Gemini (${model}) エラー: ${errJson.error.message}`;
+          }
+        } catch {
+          // ignore
+        }
+
+        console.warn(`Model ${model} failed: ${errMsg}. Trying fallback model...`);
+        lastError = new Error(errMsg);
+
+        // high demand (503), rate limit (429), not available (404/400) などの場合は次のモデルへフォールバック
+        continue;
       }
-    } catch {
-      // ignore
+
+      const result = (await response.json()) as any;
+      const candidate = result.candidates?.[0];
+      if (!candidate || !candidate.content?.parts?.[0]?.text) {
+        throw new Error(`Gemini (${model}) から有効な楽譜変換結果が得られませんでした`);
+      }
+
+      let text = candidate.content.parts[0].text.trim();
+
+      // コードブロックのバッククォート囲み（```markdown ... ```）を除去して純粋なMarkdownにする
+      if (text.startsWith('```markdown')) {
+        text = text.substring(11).trim();
+      } else if (text.startsWith('```')) {
+        text = text.substring(3).trim();
+      }
+      if (text.endsWith('```')) {
+        text = text.substring(0, text.length - 3).trim();
+      }
+
+      return { markdown: text, modelUsed: model };
+    } catch (err: any) {
+      console.warn(`Request to ${model} threw error: ${err.message}. Trying next model...`);
+      lastError = err;
     }
-    throw new Error(errMsg);
   }
 
-  const result = (await response.json()) as any;
-  const candidate = result.candidates?.[0];
-  if (!candidate || !candidate.content?.parts?.[0]?.text) {
-    throw new Error('Gemini から有効な楽譜変換結果が得られませんでした');
-  }
-
-  let text = candidate.content.parts[0].text.trim();
-
-  // コードブロックのバッククォート囲み（```markdown ... ```）を除去して純粋なMarkdownにする
-  if (text.startsWith('```markdown')) {
-    text = text.substring(11).trim();
-  } else if (text.startsWith('```')) {
-    text = text.substring(3).trim();
-  }
-  if (text.endsWith('```')) {
-    text = text.substring(0, text.length - 3).trim();
-  }
-
-  return text;
+  throw lastError || new Error('利用可能なすべての Gemini モデルで解析に失敗しました。');
 }

@@ -146,15 +146,15 @@ export async function fetchAiConfig(): Promise<{ hasServerKey: boolean }> {
 export async function transcribeScoreImageApi(
   image: string,
   apiKey?: string
-): Promise<{ markdown: string }> {
+): Promise<{ markdown: string; modelUsed?: string }> {
   const res = await fetch('/api/ai/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image, apiKey }),
   });
-  const data = (await res.json()) as { markdown?: string; error?: string };
+  const data = (await res.json()) as { markdown?: string; modelUsed?: string; error?: string };
   if (!res.ok) {
     throw new Error(data.error || '楽譜の解析に失敗しました');
   }
-  return { markdown: data.markdown! };
+  return { markdown: data.markdown!, modelUsed: data.modelUsed };
 }

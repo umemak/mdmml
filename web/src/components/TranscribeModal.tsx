@@ -16,7 +16,7 @@ import { fetchAiConfig, transcribeScoreImageApi } from '../api';
 interface TranscribeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (markdown: string) => void;
+  onSuccess: (markdown: string, modelUsed?: string) => void;
 }
 
 export const TranscribeModal: React.FC<TranscribeModalProps> = ({
@@ -110,7 +110,7 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
 
     setError(null);
     setIsLoading(true);
-    setProgressStep('Gemini 3.6 Flash に楽譜画像を送信中...');
+    setProgressStep('Gemini AI (自動フォールバック対応) に楽譜を送信中...');
 
     try {
       setTimeout(() => {
@@ -122,7 +122,7 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
       }, 4000);
 
       const result = await transcribeScoreImageApi(imagePreview, keyToUse || undefined);
-      onSuccess(result.markdown);
+      onSuccess(result.markdown, result.modelUsed);
       onClose();
     } catch (err: any) {
       setError(err.message || '楽譜の解析に失敗しました');

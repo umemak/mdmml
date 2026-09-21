@@ -303,7 +303,7 @@ export function App() {
   };
 
   // AIによる楽譜画像からの変換成功時
-  const handleTranscribeSuccess = (generatedMarkdown: string) => {
+  const handleTranscribeSuccess = (generatedMarkdown: string, modelUsed?: string) => {
     setMarkdown(generatedMarkdown);
     setSelectedPreset('custom');
     setCurrentScoreId(null);
@@ -319,7 +319,9 @@ export function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
     handleConvert(generatedMarkdown);
-    showToast(`楽譜画像を「${extractedTitle}」として読み込みました！`);
+    showToast(
+      `楽譜画像を「${extractedTitle}」として読み込みました！${modelUsed ? ` (${modelUsed})` : ''}`
+    );
   };
 
   // MIDI ダウンロード
