@@ -561,7 +561,7 @@ export function App() {
         {/* 2カラムレイアウト */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* 左カラム: エディタ & チートシート */}
-          <div className="lg:col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4 min-w-0">
             <Editor
               value={markdown}
               onChange={handleMarkdownChange}

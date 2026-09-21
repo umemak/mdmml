@@ -179,7 +179,7 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
 
       {/* エディタエリア（行番号 + テキストエリア） */}
-      <div className="relative flex-1 min-h-[380px] flex bg-slate-950">
+      <div className="relative flex-1 min-h-[380px] flex bg-slate-950 min-w-0 overflow-hidden">
         {/* 行番号 */}
         <div
           ref={lineNumbersRef}
@@ -199,9 +199,10 @@ export const Editor: React.FC<EditorProps> = ({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
+          wrap="off"
           placeholder="| name | 1 | 2 |&#10;|---|---|---|&#10;| A | cdef | gabc |"
           spellCheck={false}
-          className="w-full flex-1 min-h-[380px] p-4 pl-3 bg-transparent font-mono text-xs sm:text-sm text-slate-200 resize-none outline-none leading-relaxed selection:bg-indigo-500/30 overflow-y-auto block"
+          className="w-full flex-1 min-w-0 min-h-[380px] p-4 pl-3 bg-transparent font-mono text-xs sm:text-sm text-slate-200 resize-none outline-none leading-relaxed selection:bg-indigo-500/30 overflow-auto whitespace-pre block"
         />
       </div>
 
