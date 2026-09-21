@@ -37,19 +37,62 @@ Tempo: 120
 - マークダウンコードブロック（\`\`\`markdown ... \`\`\`）またはテキストのみを出力してください。
 - 前置きや挨拶、余計な解説文は一切含めないでください。直接 mdmml Markdown のみを出力してください。`;
 
-// 高負荷（high demand）や一時エラー時に順次フォールバックするモデル一覧
-const FALLBACK_MODELS = [
-  'gemini-3.6-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-];
+// 利用可能モデルを動的に取得するヘルパー
+async function getCandidateModels(apiKey: string): Promise<string[]> {
+  try {
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { headers: { 'x-goog-api-key': apiKey } }
+    );
+
+    if (listRes.ok) {
+      const data = (await listRes.json()) as {
+        models?: Array<{ name: string; supportedGenerationMethods?: string[] }>;
+      };
+
+      if (data.models && data.models.length > 0) {
+        // generateContent をサポートするモデルを抽出
+        const supported = data.models
+          .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m) => m.name.replace(/^models\//, ''));
+
+        // flash系を最優先、次にpro系、その他
+        const flashModels = supported
+          .filter((name) => name.includes('flash') && !name.includes('experimental'))
+          .sort()
+          .reverse();
+        const proModels = supported
+          .filter((name) => name.includes('pro') && !name.includes('experimental'))
+          .sort()
+          .reverse();
+        const otherModels = supported.filter(
+          (name) => !name.includes('flash') && !name.includes('pro')
+        );
+
+        const ordered = [...flashModels, ...proModels, ...otherModels];
+        if (ordered.length > 0) {
+          return ordered;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to list models dynamically, falling back to static list:', e);
+  }
+
+  // リスト取得に失敗した場合の静的フォールバックリスト
+  return [
+    'gemini-3.6-flash',
+    'gemini-3.0-flash',
+    'gemini-2.5-flash',
+    'gemini-3.0-pro',
+    'gemini-2.5-pro',
+  ];
+}
 
 export async function transcribeScoreImage(
   base64DataUrl: string,
   apiKey: string
 ): Promise<{ markdown: string; modelUsed: string }> {
-  // data:image/png;base64,... 形式から mimeType と base64 データを分離
   let mimeType = 'image/jpeg';
   let base64Data = base64DataUrl;
 
@@ -83,15 +126,22 @@ export async function transcribeScoreImage(
     },
   };
 
+  // 有効なモデルリストを取得
+  const candidateModels = await getCandidateModels(apiKey);
+  console.log('Candidate Gemini models for transcription:', candidateModels);
+
   let lastError: Error | null = null;
 
-  for (const model of FALLBACK_MODELS) {
+  for (const model of candidateModels) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify(requestBody),
       });
 
@@ -110,7 +160,7 @@ export async function transcribeScoreImage(
         console.warn(`Model ${model} failed: ${errMsg}. Trying fallback model...`);
         lastError = new Error(errMsg);
 
-        // high demand (503), rate limit (429), not available (404/400) などの場合は次のモデルへフォールバック
+        // high demand, 503, 429, not found 等の場合は次のモデルを試行
         continue;
       }
 
@@ -122,7 +172,7 @@ export async function transcribeScoreImage(
 
       let text = candidate.content.parts[0].text.trim();
 
-      // コードブロックのバッククォート囲み（```markdown ... ```）を除去して純粋なMarkdownにする
+      // コードブロックのバッククォート囲みを除去
       if (text.startsWith('```markdown')) {
         text = text.substring(11).trim();
       } else if (text.startsWith('```')) {
