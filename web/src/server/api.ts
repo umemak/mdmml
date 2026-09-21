@@ -39,9 +39,14 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
   // 譜面画像 -> MML 変換 (POST /api/ai/transcribe)
   if (path === '/api/ai/transcribe' && method === 'POST') {
     try {
-      const body = (await request.json()) as { image?: string; apiKey?: string };
+      const body = (await request.json()) as {
+        image?: string;
+        apiKey?: string;
+        modelPreference?: 'pro' | 'flash';
+      };
       const image = body.image;
       const apiKey = body.apiKey?.trim() || env.GEMINI_API_KEY;
+      const modelPreference = body.modelPreference || 'pro';
 
       if (!image) {
         return json({ error: '画像データが指定されていません' }, 400);
@@ -56,7 +61,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         );
       }
 
-      const { markdown, modelUsed } = await transcribeScoreImage(image, apiKey);
+      const { markdown, modelUsed } = await transcribeScoreImage(image, apiKey, modelPreference);
       return json({ markdown, modelUsed });
     } catch (err: any) {
       return json({ error: '楽譜の解析・変換に失敗しました: ' + (err.message || '') }, 500);

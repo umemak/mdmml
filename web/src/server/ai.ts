@@ -1,7 +1,51 @@
 // Gemini API を用いた楽譜画像 -> mdmml Markdown 変換ロジック
 
-const SCORE_TO_MDMML_SYSTEM_PROMPT = `あなたは音楽理論と楽譜の読譜、および Markdown MML コンパイラ「mdmml」のエキスパートです。
+const SCORE_TO_MDMML_SYSTEM_PROMPT = `あなたは音楽理論、読譜、および Markdown MML コンパイラ「mdmml」の最高峰のエキスパートです。
 ユーザーから提供された楽譜（五線譜・ピアノ譜・コード譜など）の画像を精密に解析し、mdmml 形式の Markdown ドキュメントを作成してください。
+
+### 【極めて重要な規則・禁止事項】
+1. **スラッシュ記法（/）や繰り返し記号（%）の完全禁止**:
+   - mdmml には \`/\` や \`%\` というコマンドは存在しません。
+   - 楽譜にスラッシュ（/ / / /）や小節リピート記号（%）がある場合、絶対に \`/\` や \`%\` を出力してはなりません。必ず直前の小節と同じ音符・リズム、または指定されたコードに基づくバッキングの具体的な音符・休符・和音を展開して記述してください。
+2. **調号（Key Signature）の徹底**:
+   - 楽譜の冒頭にある調号（シャープ # / フラット ♭ の数）を必ず確認し、該当する音階のすべての音に明示的に \`+\` や \`-\` を付与してください。
+   - 例: #1個（ト長調/ホ短調）→ すべての F に \`+\` (\`f+\`)
+   - 例: ♭1個（ヘ長調/ニ短調）→ すべての B に \`-\` (\`b-\`)
+   - 例: #2個（ニ長調/ロ短調）→ すべての F, C に \`+\` (\`f+\`, \`c+\`)
+   - 例: ♭2個（変ロ長調/ト短調）→ すべての B, E に \`-\` (\`b-\`, \`e-\`)
+3. **音部記号とオクターブの厳格な基準**:
+   - 中央C（ト音記号の下第1加線、ヘ音記号の上第1加線）は \`o4 c\` です。
+   - **ト音記号（高音部記号 / G Clef）**:
+     - 第1線（最下線）: E4 (\`o4 e\`)
+     - 第2線: G4 (\`o4 g\`)
+     - 第3線: B4 (\`o4 b\`)
+     - 第4線: D5 (\`o5 d\`)
+     - 第5線（最上線）: F5 (\`o5 f\`)
+     - 下第1加線: C4 (\`o4 c\`)
+   - **ヘ音記号（低音部記号 / F Clef）**:
+     - 第1線（最下線）: G2 (\`o2 g\`)
+     - 第2線: B2 (\`o2 b\`)
+     - 第3線: D3 (\`o3 d\`)
+     - 第4線: F3 (\`o3 f\`)
+     - 第5線（最上線）: A3 (\`o3 a\`)
+     - 上第1加線: C4 (\`o4 c\`)
+     - ※左手・ベースパートは基本的に \`o2\` 〜 \`o3\`（高音部で \`o4\`）です。決して右手と同じ \`o4\` から始めないでください。
+   - オクターブ記号 \`>\` (上) / \`<\` (下) は状態が蓄積されるため、誤認を防ぐため小節の開始時や跳躍時には \`o4\`, \`o3\` 等の絶対指定を積極的に使用してください。
+4. **小節内の音価（拍数・リズム）の完全な整合性**:
+   - 拍子記号（4/4拍子, 3/4拍子, 6/8拍子など）を必ず特定してください。
+   - **各トラックの各小節（セルの内容）の合計音価が、その拍子の1小節分の拍数と完全に一致すること**を厳密に計算してください。
+     - 4/4拍子: 各小節合計で4分音符4拍分（全音符分）
+     - 3/4拍子: 各小節合計で4分音符3拍分（付点2分音符分）
+     - 6/8拍子: 各小節合計で8分音符6拍分（付点4分音符2拍分）
+   - 音長対応:
+     - 4分音符: \`4\` (\`c4\`, \`r4\`) / 付点4分: \`4.\` (\`c4.\`)
+     - 8分音符: \`8\` (\`c8\`, \`r8\`) / 付点8分: \`8.\` (\`c8.\`)
+     - 16分音符: \`16\` (\`c16\`, \`r16\`)
+     - 2分音符: \`2\` (\`c2\`, \`r2\`) / 付点2分: \`2.\` (\`c2.\`)
+     - 全音符: \`1\` (\`c1\`, \`r1\`)
+     - 8分3連符: \`12\` (\`c12d12e12\` または \`l12cde\`)
+     - タイ: \`^\` (例: \`c4^8\` は4分+8分)
+   - 音価が足りない小節は休符 \`r\` で埋め、超過している場合は符頭・旗の数を確認して修正してください。
 
 ### mdmml の仕様ルール
 1. **Front Matter**:
@@ -15,30 +59,26 @@ Tempo: 120
 \`\`\`
 
 2. **MML テーブル構造**:
-- 1列目はパート名（例: \`RH\` (右手), \`LH\` (左手)、または \`A\`, \`B\`, \`Melody\`, \`Bass\` など）。
-- 2列目以降は小節（\`| 1 | 2 | 3 | 4 |\`）を表します。mdmml はトラックごとに小節のセルを左から右へと連結します。
-- 各トラックの小節数は揃えてください。
+- 1行目はヘッダー: \`| name | 1 | 2 | 3 | ... |\`
+- 2行目は区切り線: \`|---|---|---|---|...|\`
+- 3行目以降は各トラック（例: \`RH\` (右手), \`LH\` (左手) や \`Melody\`, \`Bass\` 等）。
+- 各トラックの列数（小節数）は完全に一致させてください。
+- トラックの各セル内には、その小節に演奏される MML のみを記述してください。
 
-3. **MML 構文ルール**:
-- 音名: \`c d e f g a b\` (ド レ ミ ファ ソ ラ シ)
-- 変化記号: シャープは \`+\` または \`#\` (例: \`f+\`)、フラットは \`-\` (例: \`b-\`)
-- 音長: \`l4\`(4分音符), \`l8\`(8分音符), \`l16\`(16分音符), \`l12\`(8分音符の3連符), \`l24\`(16分音符の3連符)。付点音符は \`.\` (例: \`c4.\`, \`c8.\`)
-- タイ・スラー: \`^\` (例: \`c4^8\` で付点4分相当、\`c^\` でデフォルト音長分延長)
-- 休符: \`r\` (例: \`r4\`, \`r8\`)
-- オクターブ: \`o4\` (中央Cは \`o4 c\`)、\`>\` (1オクターブ上)、\`<\` (1オクターブ下)
-- 音色指定: \`@\` (例: \`@1\` はアコースティックピアノ, \`@25\` はアコースティックギター, \`@33\` はベースなど GM音色番号 1〜128)
-- 音量: \`v\` (0〜127、デフォルト 100)
-- テンポ: \`t\` (例: \`t120\`)
-- 和音: \`{}\` (例: \`{ceg}4\`, \`{fac}8\`)
-- ループ / 繰り返し: \`[]n\` (例: \`[c8]4\` で \`c8\` を4回)
-- ジャズ / リズム譜のスラッシュ記法: \`/ / / /\` はその小節のリズム・コンピングパターンの継続を意味します。
+3. **MML 構文例**:
+- 和音: \`{ceg}4\` (ドミソの和音4分音符)
+- ループ / リピート: \`[c8]4\` (ドの8分音符を4回繰り返し)
+- 音色指定: \`@1\` (ピアノ), \`@25\` (アコースティックギター), \`@33\` (ベース)
 
 ### 出力フォーマット
 - マークダウンコードブロック（\`\`\`markdown ... \`\`\`）またはテキストのみを出力してください。
-- 前置きや挨拶、余計な解説文は一切含めないでください。直接 mdmml Markdown のみを出力してください。`;
+- 前置きや挨拶、余計な解説文は一切含めず、直接 mdmml Markdown のみを出力してください。`;
 
 // 利用可能モデルを動的に取得するヘルパー
-async function getCandidateModels(apiKey: string): Promise<string[]> {
+async function getCandidateModels(
+  apiKey: string,
+  modelPreference: 'pro' | 'flash' = 'pro'
+): Promise<string[]> {
   try {
     const listRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
@@ -56,20 +96,24 @@ async function getCandidateModels(apiKey: string): Promise<string[]> {
           .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
           .map((m) => m.name.replace(/^models\//, ''));
 
-        // flash系を最優先、次にpro系、その他
-        const flashModels = supported
-          .filter((name) => name.includes('flash') && !name.includes('experimental'))
-          .sort()
-          .reverse();
         const proModels = supported
           .filter((name) => name.includes('pro') && !name.includes('experimental'))
+          .sort()
+          .reverse();
+        const flashModels = supported
+          .filter((name) => name.includes('flash') && !name.includes('experimental'))
           .sort()
           .reverse();
         const otherModels = supported.filter(
           (name) => !name.includes('flash') && !name.includes('pro')
         );
 
-        const ordered = [...flashModels, ...proModels, ...otherModels];
+        // 優先度に応じて並べ替え
+        const ordered =
+          modelPreference === 'flash'
+            ? [...flashModels, ...proModels, ...otherModels]
+            : [...proModels, ...flashModels, ...otherModels];
+
         if (ordered.length > 0) {
           return ordered;
         }
@@ -80,18 +124,15 @@ async function getCandidateModels(apiKey: string): Promise<string[]> {
   }
 
   // リスト取得に失敗した場合の静的フォールバックリスト
-  return [
-    'gemini-3.6-flash',
-    'gemini-3.0-flash',
-    'gemini-2.5-flash',
-    'gemini-3.0-pro',
-    'gemini-2.5-pro',
-  ];
+  return modelPreference === 'flash'
+    ? ['gemini-3.6-flash', 'gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.0-pro', 'gemini-2.5-pro']
+    : ['gemini-3.0-pro', 'gemini-2.5-pro', 'gemini-3.6-flash', 'gemini-3.0-flash', 'gemini-2.5-flash'];
 }
 
 export async function transcribeScoreImage(
   base64DataUrl: string,
-  apiKey: string
+  apiKey: string,
+  modelPreference: 'pro' | 'flash' = 'pro'
 ): Promise<{ markdown: string; modelUsed: string }> {
   let mimeType = 'image/jpeg';
   let base64Data = base64DataUrl;
@@ -115,19 +156,19 @@ export async function transcribeScoreImage(
             },
           },
           {
-            text: 'この楽譜画像を解析し、上記の仕様に準拠した完全な mdmml Markdown テーブルを出力してください。',
+            text: 'この楽譜画像を音楽理論と読譜規則に厳密に従って解析し、各小節の拍数・音価の合計を正確に一致させた完全な mdmml Markdown テーブルを出力してください。',
           },
         ],
       },
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature: 0.0,
       maxOutputTokens: 8192,
     },
   };
 
-  // 有効なモデルリストを取得
-  const candidateModels = await getCandidateModels(apiKey);
+  // 有効なモデルリストを取得 (modelPreference を反映)
+  const candidateModels = await getCandidateModels(apiKey, modelPreference);
   console.log('Candidate Gemini models for transcription:', candidateModels);
 
   let lastError: Error | null = null;

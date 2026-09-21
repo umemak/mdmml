@@ -10,6 +10,8 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
+  Cpu,
+  Zap,
 } from 'lucide-react';
 import { fetchAiConfig, transcribeScoreImageApi } from '../api';
 
@@ -27,6 +29,7 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string>('');
+  const [modelPreference, setModelPreference] = useState<'pro' | 'flash'>('pro');
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [hasServerKey, setHasServerKey] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -35,11 +38,18 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 初期化: localStorage から API Key 読み込み & サーバー設定チェック
+  // 初期化: localStorage から API Key & モデル設定読み込み & サーバー設定チェック
   useEffect(() => {
     if (isOpen) {
       const savedKey = localStorage.getItem('mdmml_gemini_api_key') || '';
       setApiKey(savedKey);
+      const savedPref = localStorage.getItem('mdmml_gemini_model_preference') as
+        | 'pro'
+        | 'flash'
+        | null;
+      if (savedPref === 'pro' || savedPref === 'flash') {
+        setModelPreference(savedPref);
+      }
       setError(null);
       fetchAiConfig().then((cfg) => setHasServerKey(cfg.hasServerKey));
     }
@@ -107,21 +117,28 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
     if (keyToUse) {
       localStorage.setItem('mdmml_gemini_api_key', keyToUse);
     }
+    localStorage.setItem('mdmml_gemini_model_preference', modelPreference);
 
     setError(null);
     setIsLoading(true);
-    setProgressStep('Gemini AI (自動フォールバック対応) に楽譜を送信中...');
+    setProgressStep(
+      `Gemini AI (${modelPreference === 'pro' ? 'Pro・精密推論' : 'Flash・高速'}) に楽譜を送信中...`
+    );
 
     try {
       setTimeout(() => {
-        setProgressStep('五線譜・音符・休符・拍子をAIで読譜中...');
+        setProgressStep('五線譜・音部記号・調号・拍子・音符をAIで精密読譜中...');
       }, 1500);
 
       setTimeout(() => {
-        setProgressStep('mdmml 形式の Markdown テーブルを生成中...');
-      }, 4000);
+        setProgressStep('小節ごとの拍数・音価を計算し mdmml 構文を生成中...');
+      }, 4500);
 
-      const result = await transcribeScoreImageApi(imagePreview, keyToUse || undefined);
+      const result = await transcribeScoreImageApi(
+        imagePreview,
+        keyToUse || undefined,
+        modelPreference
+      );
       onSuccess(result.markdown, result.modelUsed);
       onClose();
     } catch (err: any) {
@@ -240,12 +257,80 @@ export const TranscribeModal: React.FC<TranscribeModalProps> = ({
             )}
           </div>
 
+          {/* モデル推論モードの選択 */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
+              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+              <span>2. 解析モデル</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModelPreference('pro')}
+                className={`p-2.5 rounded-xl border text-left transition flex items-start space-x-2.5 cursor-pointer ${
+                  modelPreference === 'pro'
+                    ? 'border-indigo-500/80 bg-indigo-950/40 text-slate-100 ring-1 ring-indigo-500/50'
+                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <div
+                  className={`p-1.5 rounded-lg mt-0.5 ${
+                    modelPreference === 'pro'
+                      ? 'bg-indigo-500/20 text-indigo-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  <Cpu className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-medium flex items-center space-x-1.5">
+                    <span>高精度 Pro</span>
+                    <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1 py-0.2 rounded font-mono">
+                      推奨
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                    五線譜・音価・調号の読譜能力が高く、複雑な譜面に適しています
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModelPreference('flash')}
+                className={`p-2.5 rounded-xl border text-left transition flex items-start space-x-2.5 cursor-pointer ${
+                  modelPreference === 'flash'
+                    ? 'border-cyan-500/80 bg-cyan-950/40 text-slate-100 ring-1 ring-cyan-500/50'
+                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <div
+                  className={`p-1.5 rounded-lg mt-0.5 ${
+                    modelPreference === 'flash'
+                      ? 'bg-cyan-500/20 text-cyan-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-medium flex items-center space-x-1.5">
+                    <span>高速 Flash</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                    応答が高速ですが、読譜の精度がProより低下する場合があります
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Gemini API Key 設定欄 */}
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
                 <Key className="w-3.5 h-3.5 text-indigo-400" />
-                <span>2. Gemini API キー</span>
+                <span>3. Gemini API キー</span>
                 {hasServerKey && (
                   <span className="text-[10px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 px-1.5 py-0.2 rounded font-mono ml-1 flex items-center space-x-1">
                     <CheckCircle2 className="w-2.5 h-2.5" />
