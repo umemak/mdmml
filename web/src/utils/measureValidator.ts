@@ -1,5 +1,11 @@
 /**
  * 各パートの小節内長さ（Duration / Ticks / 拍数）を検証・チェックするユーティリティ
+ * 
+ * 設計思想:
+ * 各小節（列）において、パート間で音符の合計長さが一致しているかを検証します。
+ * 小節内の拍数が全パートで一致していれば、4拍（曲の基準拍子）とは異なっていても
+ * （例: 弱起・アウフタクトの1拍や、2小節まとめの8拍など）正常（エラーなし）として扱います。
+ * パート間で小節の長さが食い違っている場合のみ「パート間不一致エラー」として警告します。
  */
 
 export interface NumberParseResult {
@@ -178,7 +184,14 @@ export function calculateMmlTicks(
   return { ticks: totalTicks, nextDefTick: currentDefTick };
 }
 
-export type MeasureStatus = 'ok' | 'underrun' | 'overrun' | 'empty';
+/**
+ * セルのステータス
+ * - 'ok': 基準拍子と一致し、全パート一致している（完全正常）
+ * - 'matched': 基準拍子とは異なるが、小節内の全パートが一致している（弱起や変拍子・まとめ小節として正常）
+ * - 'mismatch': 同一小節内でパート間の長さが食い違っている（エラー）
+ * - 'empty': 音符なし（空セルまたは設定コマンドのみ）
+ */
+export type MeasureStatus = 'ok' | 'matched' | 'mismatch' | 'empty';
 
 export interface MeasureCellValidation {
   tableIndex: number;
@@ -186,11 +199,20 @@ export interface MeasureCellValidation {
   measureNumber: number; // 1-based
   mml: string;
   actualTicks: number;
-  expectedTicks: number;
+  expectedTicks: number; // 小節内の代表Ticks（または基準Ticks）
   actualBeats: number;
-  expectedBeats: number;
+  expectedBeats: number; // 小節内の代表拍数
   diffBeats: number; // actualBeats - expectedBeats
   status: MeasureStatus;
+  detailMessage?: string;
+}
+
+export interface MeasureSummary {
+  measureNumber: number;
+  isConsistent: boolean;
+  commonBeats: number | null;
+  cellCount: number;
+  hasErrors: boolean;
 }
 
 export interface MeasureValidationReport {
@@ -205,6 +227,7 @@ export interface MeasureValidationReport {
   hasErrors: boolean;
   errorCount: number;
   matrix: Map<string, Map<number, MeasureCellValidation>>; // partName -> measureNumber -> validation
+  measureSummaries: Map<number, MeasureSummary>; // measureNumber -> summary
 }
 
 /**
@@ -247,14 +270,11 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
     }
   }
 
-  // 2. 1小節の期待 Tick 数 / 拍数を計算
+  // 2. 拍子から基準拍数を計算（例: 4/4 -> 4.0拍）
   const [numStr, denStr] = timeSignature.split('/');
   const num = parseInt(numStr, 10) || 4;
   const den = parseInt(denStr, 10) || 4;
 
-  // 4分音符 = divisions ticks = 1.0拍
-  // 全音符 = divisions * 4 ticks = 4.0拍
-  // 1小節の期待 ticks = (divisions * 4 * num) / den
   const expectedTicksPerMeasure = Math.floor((divisions * 4 * num) / den);
   const expectedBeatsPerMeasure = (4 * num) / den;
 
@@ -281,19 +301,24 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
     tables.push(parseMarkdownTable(currentTableLines));
   }
 
-  // 4. 各パート・各小節の長さを検証
-  const cells: MeasureCellValidation[] = [];
+  // 4. 各パート・各セルの生の Tick 数を計算
+  interface RawCell {
+    tableIndex: number;
+    partName: string;
+    measureNumber: number;
+    mml: string;
+    ticks: number;
+    beats: number;
+  }
+
+  const rawCells: RawCell[] = [];
   const partNamesSet = new Set<string>();
   const partDefTicks = new Map<string, number>();
-  const matrix = new Map<string, Map<number, MeasureCellValidation>>();
-
-  // 初期デフォルト音長は 8分音符 = lenToTick(divisions, 8)
   const defaultInitialDefTick = Math.floor((divisions * 4) / 8);
 
   let globalMeasureOffset = 0;
 
   tables.forEach((table, tableIndex) => {
-    // 列ヘッダーから小節番号を判定
     const measureNumbers: number[] = [];
     for (let c = 1; c < table.headers.length; c++) {
       const parsedNum = parseInt(table.headers[c], 10);
@@ -311,9 +336,6 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
       if (!partDefTicks.has(partName)) {
         partDefTicks.set(partName, defaultInitialDefTick);
       }
-      if (!matrix.has(partName)) {
-        matrix.set(partName, new Map());
-      }
 
       let currentDef = partDefTicks.get(partName)!;
 
@@ -322,20 +344,14 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
         const trimmedCell = cellText.trim();
 
         if (!trimmedCell || trimmedCell === '-') {
-          const item: MeasureCellValidation = {
+          rawCells.push({
             tableIndex,
             partName,
             measureNumber: measureNum,
             mml: cellText,
-            actualTicks: 0,
-            expectedTicks: expectedTicksPerMeasure,
-            actualBeats: 0,
-            expectedBeats: expectedBeatsPerMeasure,
-            diffBeats: -expectedBeatsPerMeasure,
-            status: 'empty',
-          };
-          cells.push(item);
-          matrix.get(partName)!.set(measureNum, item);
+            ticks: 0,
+            beats: 0,
+          });
           return;
         }
 
@@ -343,34 +359,15 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
         currentDef = nextDefTick;
         partDefTicks.set(partName, currentDef);
 
-        const actualBeats = parseFloat(((ticks / divisions)).toFixed(3));
-        const diffBeats = parseFloat(((ticks - expectedTicksPerMeasure) / divisions).toFixed(3));
-
-        let status: MeasureStatus = 'ok';
-        if (Math.abs(ticks - expectedTicksPerMeasure) > 2) {
-          // わずかな丸め誤差を許容
-          if (ticks < expectedTicksPerMeasure) {
-            status = 'underrun';
-          } else {
-            status = 'overrun';
-          }
-        }
-
-        const item: MeasureCellValidation = {
+        const beats = parseFloat((ticks / divisions).toFixed(3));
+        rawCells.push({
           tableIndex,
           partName,
           measureNumber: measureNum,
           mml: cellText,
-          actualTicks: ticks,
-          expectedTicks: expectedTicksPerMeasure,
-          actualBeats,
-          expectedBeats: expectedBeatsPerMeasure,
-          diffBeats,
-          status,
-        };
-
-        cells.push(item);
-        matrix.get(partName)!.set(measureNum, item);
+          ticks,
+          beats,
+        });
       });
     });
 
@@ -379,10 +376,193 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
     }
   });
 
-  const partNames = Array.from(partNamesSet);
-  const errorCells = cells.filter((c) => c.status === 'underrun' || c.status === 'overrun');
+  // 5. 小節（列）ごとにグループ化し、パート間の一致判定を行う
+  const measureMap = new Map<number, RawCell[]>();
+  rawCells.forEach((c) => {
+    if (!measureMap.has(c.measureNumber)) {
+      measureMap.set(c.measureNumber, []);
+    }
+    measureMap.get(c.measureNumber)!.push(c);
+  });
 
-  // 全小節数
+  const cells: MeasureCellValidation[] = [];
+  const matrix = new Map<string, Map<number, MeasureCellValidation>>();
+  const measureSummaries = new Map<number, MeasureSummary>();
+
+  partNamesSet.forEach((p) => {
+    matrix.set(p, new Map());
+  });
+
+  measureMap.forEach((mCells, mNum) => {
+    // 音符のあるセル（ticks > 0）を抽出
+    const activeCells = mCells.filter((c) => c.ticks > 0);
+
+    if (activeCells.length === 0) {
+      // 全パートが空または音符なし
+      mCells.forEach((c) => {
+        const item: MeasureCellValidation = {
+          tableIndex: c.tableIndex,
+          partName: c.partName,
+          measureNumber: mNum,
+          mml: c.mml,
+          actualTicks: 0,
+          expectedTicks: expectedTicksPerMeasure,
+          actualBeats: 0,
+          expectedBeats: expectedBeatsPerMeasure,
+          diffBeats: 0,
+          status: 'empty',
+          detailMessage: '音符なし',
+        };
+        cells.push(item);
+        matrix.get(c.partName)!.set(mNum, item);
+      });
+      measureSummaries.set(mNum, {
+        measureNumber: mNum,
+        isConsistent: true,
+        commonBeats: 0,
+        cellCount: mCells.length,
+        hasErrors: false,
+      });
+      return;
+    }
+
+    // パート間の拍数が一致しているか判定
+    // わずかな計算丸め（2 ticks 以内）は一致とみなす
+    const firstTicks = activeCells[0].ticks;
+    const isAllActiveSame = activeCells.every(
+      (c) => Math.abs(c.ticks - firstTicks) <= 2
+    );
+
+    // 空セルがあるか（一部のパートだけ音がなく他はある場合）
+    const hasEmptyWhileOthersActive = mCells.some((c) => c.ticks === 0) && activeCells.length > 0;
+
+    if (isAllActiveSame && !hasEmptyWhileOthersActive) {
+      // ★ 全パートの拍数が完全に一致している！ ★
+      // （4拍でなくても、全員1拍や全員8拍など一致していればエラーにしない）
+      const commonTicks = activeCells[0].ticks;
+      const commonBeats = activeCells[0].beats;
+      const isMatchingStandard = Math.abs(commonTicks - expectedTicksPerMeasure) <= 2;
+      const status: MeasureStatus = isMatchingStandard ? 'ok' : 'matched';
+
+      mCells.forEach((c) => {
+        const item: MeasureCellValidation = {
+          tableIndex: c.tableIndex,
+          partName: c.partName,
+          measureNumber: mNum,
+          mml: c.mml,
+          actualTicks: c.ticks,
+          expectedTicks: commonTicks,
+          actualBeats: c.beats,
+          expectedBeats: commonBeats,
+          diffBeats: 0,
+          status,
+          detailMessage: isMatchingStandard
+            ? `基準拍子と一致 (${commonBeats}拍)`
+            : `パート間一致 (${commonBeats}拍)`,
+        };
+        cells.push(item);
+        matrix.get(c.partName)!.set(mNum, item);
+      });
+
+      measureSummaries.set(mNum, {
+        measureNumber: mNum,
+        isConsistent: true,
+        commonBeats,
+        cellCount: mCells.length,
+        hasErrors: false,
+      });
+    } else {
+      // ★ パート間で拍数が食い違っている（不一致エラー）！ ★
+      // 代表拍数（最頻値、または基準拍数に近いもの）を決定
+      const tickCounts = new Map<number, number>();
+      activeCells.forEach((c) => {
+        // 近いtickを同一視
+        let foundKey: number | null = null;
+        for (const k of tickCounts.keys()) {
+          if (Math.abs(k - c.ticks) <= 2) {
+            foundKey = k;
+            break;
+          }
+        }
+        if (foundKey !== null) {
+          tickCounts.set(foundKey, tickCounts.get(foundKey)! + 1);
+        } else {
+          tickCounts.set(c.ticks, 1);
+        }
+      });
+
+      let targetTicks = expectedTicksPerMeasure;
+      let maxFreq = 0;
+      tickCounts.forEach((count, t) => {
+        if (count > maxFreq) {
+          maxFreq = count;
+          targetTicks = t;
+        } else if (count === maxFreq) {
+          // 同点なら基準拍子に近い方
+          if (
+            Math.abs(t - expectedTicksPerMeasure) <
+            Math.abs(targetTicks - expectedTicksPerMeasure)
+          ) {
+            targetTicks = t;
+          }
+        }
+      });
+
+      const targetBeats = parseFloat((targetTicks / divisions).toFixed(3));
+
+      let hasMismatch = false;
+      mCells.forEach((c) => {
+        const diffTicks = c.ticks - targetTicks;
+        const diffBeats = parseFloat((diffTicks / divisions).toFixed(3));
+
+        let status: MeasureStatus;
+        let detailMessage: string;
+
+        if (c.ticks === 0) {
+          status = 'mismatch';
+          detailMessage = `このパートのみ音符がありません (他パートは ${targetBeats}拍)`;
+          hasMismatch = true;
+        } else if (Math.abs(diffTicks) <= 2) {
+          status = Math.abs(c.ticks - expectedTicksPerMeasure) <= 2 ? 'ok' : 'matched';
+          detailMessage = `小節内多数派 (${targetBeats}拍)`;
+        } else {
+          status = 'mismatch';
+          const diffText = diffBeats > 0 ? `+${diffBeats}拍 長すぎ` : `${Math.abs(diffBeats)}拍 不足`;
+          detailMessage = `他パート (${targetBeats}拍) と不一致: ${diffText}`;
+          hasMismatch = true;
+        }
+
+        const item: MeasureCellValidation = {
+          tableIndex: c.tableIndex,
+          partName: c.partName,
+          measureNumber: mNum,
+          mml: c.mml,
+          actualTicks: c.ticks,
+          expectedTicks: targetTicks,
+          actualBeats: c.beats,
+          expectedBeats: targetBeats,
+          diffBeats,
+          status,
+          detailMessage,
+        };
+        cells.push(item);
+        matrix.get(c.partName)!.set(mNum, item);
+      });
+
+      measureSummaries.set(mNum, {
+        measureNumber: mNum,
+        isConsistent: false,
+        commonBeats: null,
+        cellCount: mCells.length,
+        hasErrors: hasMismatch,
+      });
+    }
+  });
+
+  const partNames = Array.from(partNamesSet);
+  // エラーセルは「同一小節内でパート間不一致（mismatch）」のみ
+  const errorCells = cells.filter((c) => c.status === 'mismatch');
+
   let maxMeasure = 0;
   cells.forEach((c) => {
     if (c.measureNumber > maxMeasure) maxMeasure = c.measureNumber;
@@ -400,6 +580,7 @@ export function validateMeasureLengths(markdown: string): MeasureValidationRepor
     hasErrors: errorCells.length > 0,
     errorCount: errorCells.length,
     matrix,
+    measureSummaries,
   };
 }
 
@@ -415,18 +596,17 @@ function parseMarkdownTable(lines: string[]): {
   };
 
   const headers = parseRowCells(lines[0]);
-  const rows: Array<{ name: string; cells: string[] }> = [];
-
+  const tempRows: Array<{ name: string; cells: string[] }> = [];
   for (let i = 2; i < lines.length; i++) {
     const cells = parseRowCells(lines[i]);
     if (cells.length === 0) continue;
     const name = cells[0];
     if (!name) continue;
-    rows.push({
+    tempRows.push({
       name,
       cells: cells.slice(1),
     });
   }
 
-  return { headers, rows };
+  return { headers, rows: tempRows };
 }

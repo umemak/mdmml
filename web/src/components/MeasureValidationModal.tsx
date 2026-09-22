@@ -67,13 +67,13 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
             </div>
             <div>
               <h3 className="font-semibold text-slate-100 text-base flex items-center space-x-2">
-                <span>小節内長さチェック</span>
+                <span>各パートの小節内長さチェック</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
-                  拍子: {timeSignature} (1小節 = {expectedBeatsPerMeasure}拍)
+                  基準拍子: {timeSignature} ({expectedBeatsPerMeasure}拍)
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                各パートの小節（セル）ごとの音符・休符の合計長さが1小節分と一致しているかを検証します。
+                同一小節（列）内で各パートの長さが一致しているかを検証します。全パートで長さが揃っていれば、弱起（アウフタクト）やまとめ小節も正常として扱われます。
               </p>
             </div>
           </div>
@@ -104,19 +104,19 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
               {hasErrors ? (
                 <div>
                   <p className="font-semibold text-amber-300 text-sm">
-                    {errorCells.length} 箇所の小節で長さの不一致（不足または超過）が見つかりました
+                    {errorCells.length} 箇所でパート間の長さの不一致が見つかりました
                   </p>
                   <p className="text-amber-400/80 mt-0.5">
-                    音符の合計が1小節に満たないとパート間のタイミングがズレる原因になります。
+                    同一小節内でパートごとの拍数が異なると、演奏時にトラック同士のタイミングがズレてしまいます。
                   </p>
                 </div>
               ) : (
                 <div>
                   <p className="font-semibold text-emerald-300 text-sm">
-                    すべての小節の長さが正常です！
+                    すべての小節でパート間の長さが一致しています！
                   </p>
                   <p className="text-emerald-400/80 mt-0.5">
-                    全 {totalMeasures} 小節・{partNames.length} パートが {timeSignature} 拍子（{expectedBeatsPerMeasure}拍）にピッタリ合っています。
+                    全 {totalMeasures} 小節において各トラックのタイミングが正確に揃っています。
                   </p>
                 </div>
               )}
@@ -142,15 +142,15 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
             <div className="flex items-center space-x-3 text-[11px]">
               <span className="flex items-center space-x-1">
                 <span className="w-2.5 h-2.5 rounded bg-emerald-500/30 border border-emerald-500/60 inline-block" />
-                <span>正常 ({expectedBeatsPerMeasure}拍)</span>
+                <span>基準拍子一致 ({expectedBeatsPerMeasure}拍)</span>
               </span>
               <span className="flex items-center space-x-1">
-                <span className="w-2.5 h-2.5 rounded bg-amber-500/30 border border-amber-500/60 inline-block" />
-                <span>不足 (拍足らず)</span>
+                <span className="w-2.5 h-2.5 rounded bg-cyan-500/30 border border-cyan-500/60 inline-block" />
+                <span>パート間一致 (弱起・変拍子OK)</span>
               </span>
               <span className="flex items-center space-x-1">
-                <span className="w-2.5 h-2.5 rounded bg-rose-500/30 border border-rose-500/60 inline-block" />
-                <span>超過 (拍溢れ)</span>
+                <span className="w-2.5 h-2.5 rounded bg-rose-500/40 border border-rose-500/70 inline-block" />
+                <span>パート間不一致 (エラー)</span>
               </span>
             </div>
           </div>
@@ -196,10 +196,10 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
                         let bgClass = 'bg-slate-900/40 text-slate-400 border-slate-800/60';
                         if (cell.status === 'ok') {
                           bgClass = 'bg-emerald-950/30 text-emerald-300 border-emerald-900/40 hover:bg-emerald-900/40';
-                        } else if (cell.status === 'underrun') {
-                          bgClass = 'bg-amber-950/50 text-amber-300 border-amber-700/60 font-semibold hover:bg-amber-900/50';
-                        } else if (cell.status === 'overrun') {
-                          bgClass = 'bg-rose-950/50 text-rose-300 border-rose-700/60 font-semibold hover:bg-rose-900/50';
+                        } else if (cell.status === 'matched') {
+                          bgClass = 'bg-cyan-950/40 text-cyan-300 border-cyan-800/60 hover:bg-cyan-900/40';
+                        } else if (cell.status === 'mismatch') {
+                          bgClass = 'bg-rose-950/60 text-rose-300 border-rose-600 font-bold hover:bg-rose-900/60 ring-1 ring-rose-500/40';
                         } else if (cell.status === 'empty') {
                           bgClass = 'bg-slate-950 text-slate-600 border-slate-800';
                         }
@@ -214,7 +214,7 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
                               className={`w-full py-1 px-1 rounded border text-[11px] font-mono transition cursor-pointer ${bgClass} ${
                                 isSelected ? 'ring-2 ring-indigo-400 shadow-sm' : ''
                               }`}
-                              title={`[${pName}] 第 ${m} 小節: ${cell.actualBeats}拍 / ${expectedBeatsPerMeasure}拍`}
+                              title={`[${pName}] 第 ${m} 小節: ${cell.actualBeats}拍 (${cell.detailMessage})`}
                             >
                               {cell.actualBeats}
                             </button>
@@ -242,20 +242,20 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
                     className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${
                       selectedCell.status === 'ok'
                         ? 'bg-emerald-950/60 border-emerald-700/60 text-emerald-300'
-                        : selectedCell.status === 'underrun'
-                        ? 'bg-amber-950/60 border-amber-700/60 text-amber-300'
-                        : selectedCell.status === 'overrun'
+                        : selectedCell.status === 'matched'
+                        ? 'bg-cyan-950/60 border-cyan-700/60 text-cyan-300'
+                        : selectedCell.status === 'mismatch'
                         ? 'bg-rose-950/60 border-rose-700/60 text-rose-300'
                         : 'bg-slate-800 border-slate-700 text-slate-400'
                     }`}
                   >
                     {selectedCell.status === 'ok'
-                      ? '長さ一致 (OK)'
-                      : selectedCell.status === 'underrun'
-                      ? `不足: ${Math.abs(selectedCell.diffBeats)} 拍 足りません`
-                      : selectedCell.status === 'overrun'
-                      ? `超過: +${selectedCell.diffBeats} 拍 長すぎます`
-                      : '空セル'}
+                      ? `基準拍子と一致 (${selectedCell.actualBeats}拍)`
+                      : selectedCell.status === 'matched'
+                      ? `パート間一致 (全パート ${selectedCell.actualBeats}拍)`
+                      : selectedCell.status === 'mismatch'
+                      ? `不一致: ${selectedCell.detailMessage}`
+                      : '音符なし'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 text-slate-400 font-mono text-[11px]">
@@ -264,7 +264,7 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
                     {selectedCell.mml || '(空)'}
                   </code>
                   <span>
-                    (計: {selectedCell.actualBeats} 拍 / 基準: {selectedCell.expectedBeats} 拍)
+                    ({selectedCell.actualBeats} 拍 / 代表: {selectedCell.expectedBeats} 拍)
                   </span>
                 </div>
               </div>
@@ -283,7 +283,7 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
             <div className="space-y-1.5">
               <div className="flex items-center space-x-1.5 text-amber-300 font-medium">
                 <Info className="w-3.5 h-3.5" />
-                <span>不一致のある小節（マス目をクリックすると詳細を確認できます）:</span>
+                <span>パート間不一致のある小節（マス目をクリックすると詳細を確認できます）:</span>
               </div>
               <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                 {errorCells.slice(0, 10).map((err, idx) => (
@@ -294,11 +294,7 @@ export const MeasureValidationModal: React.FC<MeasureValidationModalProps> = ({
                   >
                     <span className="text-indigo-300">[{err.partName}]</span>
                     <span>M{err.measureNumber}:</span>
-                    <span
-                      className={
-                        err.status === 'underrun' ? 'text-amber-400 font-bold' : 'text-rose-400 font-bold'
-                      }
-                    >
+                    <span className="text-rose-400 font-bold">
                       {err.diffBeats > 0 ? `+${err.diffBeats}` : err.diffBeats}拍
                     </span>
                   </button>
