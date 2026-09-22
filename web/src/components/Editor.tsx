@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   RefreshCw,
   Copy,
@@ -10,8 +10,12 @@ import {
   FileCode,
   FilePlus,
   Music,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatMarkdownTables } from '../utils/tableFormatter';
+import { validateMeasureLengths } from '../utils/measureValidator';
+import { MeasureValidationModal } from './MeasureValidationModal';
 
 const DEFAULT_SCORE_TEMPLATE = `---
 Title: "無題の楽譜"
@@ -35,6 +39,7 @@ interface EditorProps {
   onNewScore?: () => void;
   onSave?: () => void;
   onOpenTranscribe?: () => void;
+  onSeekMeasure?: (measureNumber: number) => void;
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -47,11 +52,19 @@ export const Editor: React.FC<EditorProps> = ({
   onNewScore,
   onSave,
   onOpenTranscribe,
+  onSeekMeasure,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [formatted, setFormatted] = useState(false);
+  const [validationModalOpen, setValidationModalOpen] = useState(false);
+
+  // 各パート・各小節の長さ検証レポート
+  const validationReport = useMemo(() => {
+    if (!value.trim()) return null;
+    return validateMeasureLengths(value);
+  }, [value]);
 
   // テーブル整形処理
   const handleFormat = () => {
@@ -187,6 +200,32 @@ export const Editor: React.FC<EditorProps> = ({
             )}
           </button>
 
+          {/* 小節内長さチェックボタン */}
+          {validationReport && validationReport.totalMeasures > 0 && (
+            <button
+              onClick={() => setValidationModalOpen(true)}
+              className={`inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition cursor-pointer border shadow-sm ${
+                validationReport.hasErrors
+                  ? 'bg-amber-950/70 hover:bg-amber-900/70 border-amber-500/70 text-amber-300 shadow-amber-500/20 animate-pulse'
+                  : 'bg-emerald-950/50 hover:bg-emerald-900/50 border-emerald-600/50 text-emerald-300'
+              }`}
+              title="各パートの小節（セル）の音長が1小節分と一致しているか検証します"
+            >
+              {validationReport.hasErrors ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>小節エラー ({validationReport.errorCount})</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">小節長 OK</span>
+                  <span className="sm:hidden">OK</span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* 保存ボタン */}
           {onSave && (
             <button
@@ -221,6 +260,24 @@ export const Editor: React.FC<EditorProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 小節長エラー時のインライン警告バナー */}
+      {validationReport && validationReport.hasErrors && (
+        <div className="bg-amber-950/40 border-b border-amber-800/60 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>
+              <strong>{validationReport.errorCount} 箇所</strong> の小節で長さの不一致（拍足らず・拍溢れ）が見つかりました
+            </span>
+          </div>
+          <button
+            onClick={() => setValidationModalOpen(true)}
+            className="text-[11px] font-medium text-amber-300 hover:text-amber-100 underline cursor-pointer ml-2 shrink-0"
+          >
+            診断表を開く →
+          </button>
+        </div>
+      )}
 
       {/* エディタエリア（行番号 + テキストエリア） */}
       <div className="relative flex-1 min-h-[380px] flex bg-slate-950 min-w-0 overflow-hidden">
@@ -304,6 +361,17 @@ export const Editor: React.FC<EditorProps> = ({
           <span><kbd className="bg-slate-800 px-1 py-0.5 rounded text-slate-300">Ctrl+Enter</kbd> で即時変換</span>
         </div>
       </div>
+
+      {/* 小節内長さ検証モーダル */}
+      <MeasureValidationModal
+        isOpen={validationModalOpen}
+        onClose={() => setValidationModalOpen(false)}
+        report={validationReport}
+        onJumpToMeasure={(m) => {
+          setValidationModalOpen(false);
+          onSeekMeasure?.(m);
+        }}
+      />
     </div>
   );
 };

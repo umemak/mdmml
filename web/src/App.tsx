@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { initWasm, convertToSMF } from './wasm';
-import { MidiAudioPlayer, MidiMetadata, PlayerState } from './player';
+import { MidiAudioPlayer, MidiMetadata, PlayerState, getMeasureDuration } from './player';
 import { Editor } from './components/Editor';
 import { PlayerControls } from './components/PlayerControls';
 import { CheatSheet } from './components/CheatSheet';
@@ -356,6 +356,14 @@ export function App() {
     URL.revokeObjectURL(url);
   };
 
+  // 小節指定シーク
+  const handleSeekMeasure = (measureNumber: number) => {
+    if (!metadata || !playerRef.current) return;
+    const measureDuration = getMeasureDuration(metadata.bpm, metadata.timeSignature);
+    const target = Math.max(0, (measureNumber - 1) * measureDuration);
+    playerRef.current.seek(target);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
       {/* トースト通知 */}
@@ -596,6 +604,7 @@ export function App() {
               onNewScore={handleNewScore}
               onSave={handleOpenSaveModal}
               onOpenTranscribe={() => setTranscribeModalOpen(true)}
+              onSeekMeasure={handleSeekMeasure}
             />
             <CheatSheet />
           </div>
