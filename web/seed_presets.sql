@@ -45,15 +45,15 @@ Tempo: 120
 
 ---
 
-| name   | 1           | 2        | 3        | 4        | 5                    |
-| ------ | ----------- | -------- | -------- | -------- | -------------------- |
-| Part 1 | @81l4o4v110 | cdefedcr | efgagfer | crcrcrcr | c8c8d8d8e8e8f8f8edcr |
-| Part 2 | @81l4o4v95  | r1       | cdefedcr | efgagfer | crcrcrcr             |
-| Part 3 | @81l4o3v90  | r1       | r1       | cdefedcr | efgagfer             |
+| name   | 1                | 2    | 3    | 4    | 5    | 6    | 7                | 8    |
+| ------ | ---------------- | ---- | ---- | ---- | ---- | ---- | ---------------- | ---- |
+| Part 1 | @81l4o4v110 cdef | edcr | efga | gfer | crcr | crcr | c8c8d8d8e8e8f8f8 | edcr |
+| Part 2 | @81l4o4v95 r1    | r1   | cdef | edcr | efga | gfer | crcr             | crcr |
+| Part 3 | @81l4o3v90 r1    | r1   | r1   | r1   | cdef | edcr | efga             | gfer |
 ',
   1,
   '2026-09-21T10:00:01.000Z',
-  '2026-09-21T10:00:01.000Z'
+  '2026-09-22T09:50:00.000Z'
 );
 
 -- 3. きらきら星
@@ -68,14 +68,14 @@ Tempo: 108
 
 ---
 
-| name   | 1              | 2              | 3                 | 4                 |
-| ------ | -------------- | -------------- | ----------------- | ----------------- |
-| Melody | @1l4o4v110     | ccgga2         | ffeedd2           | [ggffeed2]2       |
-| Bass   | @1l4o3v90      | c>e<g>e<f>c<c2 | d>d<c>c<g>d<g2    | [e>c<d>c<c>c<g2]2 |
+| name   | 1                  | 2      | 3        | 4      | 5        | 6      | 7        | 8      | 9        | 10     | 11       | 12     |
+| ------ | ------------------ | ------ | -------- | ------ | -------- | ------ | -------- | ------ | -------- | ------ | -------- | ------ |
+| Melody | @1l4o4v110 ccgg    | aag2   | ffee     | ddc2   | ggff     | eed2   | ggff     | eed2   | ccgg     | aag2   | ffee     | ddc2   |
+| Bass   | @1l4o3v90 c>e<g>e< | f>c<c2 | d>d<c>c< | g>d<g2 | e>c<d>c< | c>c<g2 | e>c<d>c< | c>c<g2 | c>e<g>e< | f>c<c2 | d>d<c>c< | g>d<c2 |
 ',
   1,
   '2026-09-21T10:00:02.000Z',
-  '2026-09-21T10:00:02.000Z'
+  '2026-09-22T09:50:00.000Z'
 );
 
 -- 4. 8-bit Retro Game Loop
