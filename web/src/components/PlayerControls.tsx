@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -10,8 +10,12 @@ import {
   Sliders,
   Sparkles,
   Loader2,
+  SkipBack,
+  SkipForward,
+  RotateCcw,
+  Clock,
 } from 'lucide-react';
-import { MidiMetadata, PlayerState, SoundEngine } from '../player';
+import { MidiMetadata, PlayerState, SoundEngine, getMeasureDuration } from '../player';
 
 interface PlayerControlsProps {
   metadata: MidiMetadata | null;
@@ -33,8 +37,9 @@ interface PlayerControlsProps {
 }
 
 function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+  const safeSec = Math.max(0, seconds);
+  const mins = Math.floor(safeSec / 60);
+  const secs = Math.floor(safeSec % 60);
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
@@ -56,6 +61,54 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onEngineChange,
   isLoadingSoundfont,
 }) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(0);
+
+  const duration = metadata?.duration || 0;
+  const bpm = metadata?.bpm || 120;
+  const timeSig = metadata?.timeSignature || '4/4';
+
+  const measureDuration = useMemo(() => {
+    return getMeasureDuration(bpm, timeSig);
+  }, [bpm, timeSig]);
+
+  const totalMeasures = useMemo(() => {
+    if (duration <= 0 || measureDuration <= 0) return 1;
+    return Math.max(1, Math.ceil(duration / measureDuration));
+  }, [duration, measureDuration]);
+
+  // ドラッグ中はローカル値、通常時は再生位置
+  const effectiveTime = isDragging ? dragValue : currentTime;
+
+  const currentMeasure = useMemo(() => {
+    if (measureDuration <= 0) return 1;
+    return Math.min(totalMeasures, Math.floor(effectiveTime / measureDuration) + 1);
+  }, [effectiveTime, measureDuration, totalMeasures]);
+
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (effectiveTime / duration) * 100)) : 0;
+
+  // 小節指定シーク
+  const handleSeekMeasure = (measureNumber: number) => {
+    const target = Math.max(0, Math.min(duration, (measureNumber - 1) * measureDuration));
+    onSeek(target);
+  };
+
+  // 前の小節へ
+  const handlePrevMeasure = () => {
+    const currentStart = (currentMeasure - 1) * measureDuration;
+    // 小節開始から0.4秒以上進んでいれば現在小節の頭、そうでなければ前小節へ
+    if (effectiveTime - currentStart > 0.4) {
+      handleSeekMeasure(currentMeasure);
+    } else {
+      handleSeekMeasure(Math.max(1, currentMeasure - 1));
+    }
+  };
+
+  // 次の小節へ
+  const handleNextMeasure = () => {
+    handleSeekMeasure(Math.min(totalMeasures, currentMeasure + 1));
+  };
+
   if (!metadata) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
@@ -135,32 +188,123 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         </div>
       )}
 
-      {/* シークバー & 再生時間 */}
-      <div className="space-y-1.5">
+      {/* シークバー & 再生時間 & 現在の小節 */}
+      <div className="space-y-2">
         <div className="relative">
           <input
             type="range"
             min="0"
-            max={metadata.duration || 1}
-            step="0.05"
-            value={currentTime}
-            onChange={(e) => onSeek(parseFloat(e.target.value))}
-            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            max={duration || 1}
+            step="0.02"
+            value={effectiveTime}
+            onPointerDown={() => {
+              setIsDragging(true);
+              setDragValue(currentTime);
+            }}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              setDragValue(val);
+              if (!isDragging) {
+                onSeek(val);
+              }
+            }}
+            onPointerUp={(e) => {
+              setIsDragging(false);
+              const val = parseFloat((e.target as HTMLInputElement).value);
+              onSeek(val);
+            }}
+            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-indigo-400 bg-slate-800"
+            style={{
+              background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${progressPercent}%, #1e293b ${progressPercent}%, #1e293b 100%)`,
+            }}
           />
         </div>
-        <div className="flex justify-between text-xs font-mono text-slate-400">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(metadata.duration)}</span>
+        <div className="flex justify-between items-center text-xs font-mono text-slate-400">
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-200 font-medium">{formatTime(effectiveTime)}</span>
+            <span className="text-slate-600">/</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-sans font-medium">
+              第 <strong>{currentMeasure}</strong> / {totalMeasures} 小節
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* コントロールボタン */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      {/* 小節セレクター & ミニタイムライン */}
+      <div className="p-3 bg-slate-950/60 border border-slate-800/90 rounded-xl space-y-2.5">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-1.5 text-slate-300 font-medium">
+            <Clock className="w-3.5 h-3.5 text-indigo-400" />
+            <span>小節ジャンプ</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <label className="text-[11px] text-slate-400">小節直接指定:</label>
+            <select
+              value={currentMeasure}
+              onChange={(e) => handleSeekMeasure(parseInt(e.target.value, 10))}
+              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
+            >
+              {Array.from({ length: totalMeasures }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  第 {m} 小節 ({formatTime((m - 1) * measureDuration)})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 小節クイックボタン一覧（クリックでその小節から即座に再生） */}
+        <div className="flex items-center space-x-1 overflow-x-auto pb-1 pt-1 scrollbar-thin">
+          {Array.from({ length: totalMeasures }, (_, i) => i + 1).map((m) => {
+            const isCurr = m === currentMeasure;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => handleSeekMeasure(m)}
+                title={`第 ${m} 小節へジャンプ (${formatTime((m - 1) * measureDuration)})`}
+                className={`px-2.5 py-1 text-xs font-mono rounded-lg transition shrink-0 cursor-pointer ${
+                  isCurr
+                    ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/40 ring-1 ring-indigo-400 scale-105'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/80'
+                }`}
+              >
+                {m}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 再生・コントロールボタン */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-1.5 sm:space-x-2">
+          {/* 先頭に戻る */}
+          <button
+            onClick={() => onSeek(0)}
+            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+            title="曲の先頭（第1小節）に戻る"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+
+          {/* 前の小節へ */}
+          <button
+            onClick={handlePrevMeasure}
+            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+            title="前の小節へ移動"
+          >
+            <SkipBack className="w-4 h-4" />
+          </button>
+
+          {/* 再生 / 一時停止 */}
           {state === 'playing' ? (
             <button
               onClick={onPause}
-              className="p-3 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 rounded-full transition cursor-pointer"
+              className="p-3 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 rounded-full transition cursor-pointer shadow-lg shadow-amber-500/20"
               title="一時停止"
             >
               <Pause className="w-5 h-5 fill-current" />
@@ -176,18 +320,28 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             </button>
           )}
 
+          {/* 停止 */}
           <button
             onClick={onStop}
             className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full transition cursor-pointer"
-            title="停止"
+            title="停止 (位置リセット)"
           >
             <Square className="w-4 h-4 fill-current" />
+          </button>
+
+          {/* 次の小節へ */}
+          <button
+            onClick={handleNextMeasure}
+            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+            title="次の小節へ移動"
+          >
+            <SkipForward className="w-4 h-4" />
           </button>
         </div>
 
         {/* 音量調整 */}
-        <div className="flex items-center space-x-2 text-slate-400">
-          <Volume2 className="w-4 h-4 text-slate-400" />
+        <div className="flex items-center space-x-2 text-slate-400 bg-slate-950/40 border border-slate-800/80 px-3 py-1.5 rounded-xl">
+          <Volume2 className="w-4 h-4 text-slate-400 shrink-0" />
           <input
             type="range"
             min="-30"
@@ -195,7 +349,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             step="1"
             value={volume}
             onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-            className="w-20 sm:w-28 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400"
+            className="w-20 sm:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400"
             title={`音量: ${volume} dB`}
           />
         </div>
@@ -251,3 +405,4 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     </div>
   );
 };
+

@@ -283,6 +283,9 @@ export class MidiAudioPlayer {
     const wasPlaying = this.state === 'playing';
     if (wasPlaying) {
       this.pause();
+    } else {
+      this.clearScheduledEvents();
+      this.stopAudioNodes();
     }
     this.pauseOffset = Math.max(0, Math.min(targetSeconds, this.totalDuration));
     this.callbacks.onProgress?.(this.pauseOffset, this.totalDuration > 0 ? this.pauseOffset / this.totalDuration : 0);
@@ -310,10 +313,12 @@ export class MidiAudioPlayer {
       const sfInstrument = this.trackInstruments[trackIndex];
 
       track.notes.forEach((note) => {
-        if (note.time + note.duration < fromTime) return;
+        const noteEndTime = note.time + note.duration;
+        if (noteEndTime <= fromTime) return;
 
-        const noteStartTime = baseAudioTime + Math.max(0, note.time - fromTime);
-        const duration = note.duration;
+        const isCut = note.time < fromTime;
+        const noteStartTime = baseAudioTime + (isCut ? 0 : note.time - fromTime);
+        const duration = isCut ? Math.max(0.05, noteEndTime - fromTime) : note.duration;
         const velocity = (note.velocity || 0.8) * volumeFactor;
 
         // UI ビジュアライザ更新イベント
@@ -387,3 +392,27 @@ export class MidiAudioPlayer {
     this.soundfontInstruments.clear();
   }
 }
+
+/**
+ * 拍子文字列（例: "4/4", "3/4", "6/8"）を分子・分母に分解
+ */
+export function parseTimeSignature(sig?: string): { numerator: number; denominator: number } {
+  if (!sig) return { numerator: 4, denominator: 4 };
+  const parts = sig.split('/');
+  const num = parseInt(parts[0], 10);
+  const den = parseInt(parts[1], 10);
+  return {
+    numerator: !isNaN(num) && num > 0 ? num : 4,
+    denominator: !isNaN(den) && den > 0 ? den : 4,
+  };
+}
+
+/**
+ * 1小節あたりの秒数を計算
+ */
+export function getMeasureDuration(bpm: number, timeSignature?: string): number {
+  const { numerator, denominator } = parseTimeSignature(timeSignature);
+  const safeBpm = bpm > 0 ? bpm : 120;
+  return numerator * (60 / safeBpm) * (4 / denominator);
+}
+
