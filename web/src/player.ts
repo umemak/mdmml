@@ -54,6 +54,7 @@ export interface PlaybackCallback {
 
 export class MidiAudioPlayer {
   private midi: Midi | null = null;
+  private playableTracks: Track[] = [];
   private soundfontInstruments: Map<string, SoundfontInstrument> = new Map();
   private trackInstruments: SoundfontInstrument[] = [];
   private state: PlayerState = 'stopped';
@@ -106,6 +107,8 @@ export class MidiAudioPlayer {
         tracksWithNotes.push(t);
       }
     }
+
+    this.playableTracks = tracksWithNotes;
 
     const parsedTracks: ParsedTrack[] = tracksWithNotes.map((t, idx) => {
       const instName = t.instrument.name || 'Acoustic Grand Piano';
@@ -265,10 +268,9 @@ export class MidiAudioPlayer {
     if (!this.midi) return;
 
     const baseAudioTime = Tone.now();
-    const tracksWithNotes = this.midi.tracks.filter((t) => t.notes.length > 0);
     const volumeFactor = Math.pow(10, this.volumeDb / 20);
 
-    tracksWithNotes.forEach((track, trackIndex) => {
+    this.playableTracks.forEach((track, trackIndex) => {
       const sfInstrument = this.trackInstruments[trackIndex];
 
       track.notes.forEach((note) => {
@@ -279,19 +281,6 @@ export class MidiAudioPlayer {
         const noteStartTime = baseAudioTime + (isCut ? 0 : note.time - fromTime);
         const duration = isCut ? Math.max(0.05, noteEndTime - fromTime) : note.duration;
         const velocity = (note.velocity || 0.8) * volumeFactor;
-
-        // UI ビジュアライザ更新イベント
-        const eventId = Tone.Draw.schedule(() => {
-          this.activeTracks.add(trackIndex);
-          this.callbacks.onActiveNotesChange?.(new Set(this.activeTracks));
-
-          window.setTimeout(() => {
-            this.activeTracks.delete(trackIndex);
-            this.callbacks.onActiveNotesChange?.(new Set(this.activeTracks));
-          }, duration * 1000);
-        }, noteStartTime);
-
-        this.scheduledEvents.push(eventId);
 
         // 発音処理
         if (sfInstrument) {
@@ -328,6 +317,31 @@ export class MidiAudioPlayer {
       const progress = this.totalDuration > 0 ? Math.min(1, current / this.totalDuration) : 0;
       this.callbacks.onProgress?.(current, progress);
 
+      // 再生時間 current に基づき、現在発音中のトラックをリアルタイム判定
+      const newActiveTracks = new Set<number>();
+      for (let i = 0; i < this.playableTracks.length; i++) {
+        const track = this.playableTracks[i];
+        if (isTrackActiveAt(track.notes, current)) {
+          newActiveTracks.add(i);
+        }
+      }
+
+      // 前回と変化がある場合のみコールバック通知
+      let hasChanged = newActiveTracks.size !== this.activeTracks.size;
+      if (!hasChanged) {
+        for (const id of newActiveTracks) {
+          if (!this.activeTracks.has(id)) {
+            hasChanged = true;
+            break;
+          }
+        }
+      }
+
+      if (hasChanged) {
+        this.activeTracks = newActiveTracks;
+        this.callbacks.onActiveNotesChange?.(this.activeTracks);
+      }
+
       if (current >= this.totalDuration + 0.3) {
         this.stop();
         return;
@@ -347,6 +361,43 @@ export class MidiAudioPlayer {
     this.soundfontInstruments.clear();
     this.trackInstruments = [];
   }
+}
+
+/**
+ * 指定された時刻 current において、ノートが鳴っているかを二分探索で高速判定する
+ */
+export function isTrackActiveAt(
+  notes: Array<{ time: number; duration: number }>,
+  current: number
+): boolean {
+  if (!notes || notes.length === 0) return false;
+
+  // note.time + note.duration > current を満たす最初のノートを二分探索
+  let low = 0;
+  let high = notes.length - 1;
+  let candidate = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (notes[mid].time + notes[mid].duration > current) {
+      candidate = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  if (candidate === -1) return false;
+
+  for (let i = candidate; i < notes.length; i++) {
+    const n = notes[i];
+    if (n.time > current) break;
+    if (current >= n.time && current < n.time + n.duration) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

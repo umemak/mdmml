@@ -338,20 +338,34 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             return (
               <div
                 key={track.id}
-                className={`flex flex-col justify-between p-2.5 rounded-lg border text-xs transition-all duration-100 ${
+                className={`flex flex-col justify-between p-2.5 rounded-lg border text-xs transition-colors duration-75 ${
                   isActive
-                    ? 'bg-indigo-950/60 border-indigo-500 text-indigo-200 shadow-md shadow-indigo-500/20 scale-[1.02]'
+                    ? 'bg-indigo-950/80 border-cyan-500/70 text-indigo-100 shadow-md shadow-cyan-950/50'
                     : 'bg-slate-950/40 border-slate-800/80 text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2 truncate">
-                    <span
-                      className={`w-2 h-2 rounded-full transition-colors ${
-                        isActive ? 'bg-cyan-400 animate-ping' : 'bg-slate-700'
-                      }`}
-                    />
+                    <span className="relative flex h-2.5 w-2.5 shrink-0">
+                      {isActive && (
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60 animate-ping" />
+                      )}
+                      <span
+                        className={`relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-75 ${
+                          isActive
+                            ? 'bg-cyan-400 shadow-[0_0_8px_#22d3ee]'
+                            : 'bg-slate-700'
+                        }`}
+                      />
+                    </span>
                     <span className="font-medium truncate">{track.name}</span>
+                    {isActive && (
+                      <span className="flex items-end space-x-0.5 h-3 ml-1 shrink-0">
+                        <span className="w-0.5 h-2.5 bg-cyan-400 rounded-full animate-pulse" />
+                        <span className="w-0.5 h-1.5 bg-cyan-300 rounded-full animate-pulse" style={{ animationDelay: '75ms' }} />
+                        <span className="w-0.5 h-3 bg-cyan-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                      </span>
+                    )}
                   </div>
                   <span className="text-slate-500 font-mono text-[11px] shrink-0">
                     {track.notesCount} notes
@@ -359,7 +373,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                 </div>
 
                 <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 truncate max-w-[140px]">
+                  <span
+                    className={`px-1.5 py-0.5 rounded truncate max-w-[140px] transition-colors ${
+                      isActive ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-800/50' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
                     @{track.instrumentNumber + 1} {track.instrumentName}
                   </span>
                   <span className="text-slate-500 font-mono">Ch {track.channel + 1}</span>
