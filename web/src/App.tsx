@@ -52,7 +52,6 @@ export function App() {
   const [progress, setProgress] = useState(0);
   const [activeTracks, setActiveTracks] = useState<Set<number>>(new Set());
   const [volume, setVolume] = useState(-6);
-  const [engine, setEngine] = useState<'soundfont' | 'synth'>('soundfont');
   const [isLoadingSoundfont, setIsLoadingSoundfont] = useState(false);
 
   // 認証 & D1 楽譜状態
@@ -118,18 +117,12 @@ export function App() {
       onActiveNotesChange: (tracks) => setActiveTracks(tracks),
       onLoadingSoundfont: (loading) => setIsLoadingSoundfont(loading),
     });
-    player.setEngine(engine);
     playerRef.current = player;
 
     return () => {
       player.dispose();
     };
   }, []);
-
-  const handleEngineChange = (newEngine: 'soundfont' | 'synth') => {
-    setEngine(newEngine);
-    playerRef.current?.setEngine(newEngine);
-  };
 
   // Markdown -> SMF 変換処理
   const handleConvert = useCallback(
@@ -628,8 +621,6 @@ export function App() {
                 playerRef.current?.setVolume(v);
               }}
               isConverting={isConverting}
-              engine={engine}
-              onEngineChange={handleEngineChange}
               isLoadingSoundfont={isLoadingSoundfont}
             />
 

@@ -44,7 +44,6 @@ export interface MidiMetadata {
 }
 
 export type PlayerState = 'stopped' | 'playing' | 'paused';
-export type SoundEngine = 'soundfont' | 'synth';
 
 export interface PlaybackCallback {
   onStateChange?: (state: PlayerState) => void;
@@ -55,10 +54,8 @@ export interface PlaybackCallback {
 
 export class MidiAudioPlayer {
   private midi: Midi | null = null;
-  private synths: Tone.PolySynth[] = [];
   private soundfontInstruments: Map<string, SoundfontInstrument> = new Map();
   private trackInstruments: SoundfontInstrument[] = [];
-  private engine: SoundEngine = 'soundfont';
   private state: PlayerState = 'stopped';
   private scheduledEvents: any[] = [];
   private animFrameId: number | null = null;
@@ -77,14 +74,6 @@ export class MidiAudioPlayer {
 
   public setCallbacks(callbacks: PlaybackCallback) {
     this.callbacks = { ...this.callbacks, ...callbacks };
-  }
-
-  public setEngine(engine: SoundEngine) {
-    this.engine = engine;
-  }
-
-  public getEngine(): SoundEngine {
-    return this.engine;
   }
 
   public async loadMidiBytes(bytes: Uint8Array): Promise<MidiMetadata> {
@@ -131,9 +120,6 @@ export class MidiAudioPlayer {
         notesCount: t.notes.length,
       };
     });
-
-    // シンセ音源の初期化
-    this.initSynths(parsedTracks.length);
 
     // SoundFont の事前ロード
     await this.preloadSoundfonts(parsedTracks);
@@ -191,28 +177,6 @@ export class MidiAudioPlayer {
       console.warn('SoundFont preload error:', err);
     } finally {
       this.callbacks.onLoadingSoundfont?.(false);
-    }
-  }
-
-  private initSynths(count: number) {
-    this.synths.forEach((s) => s.dispose());
-    this.synths = [];
-
-    const synthTypes: Array<'triangle' | 'square' | 'sawtooth' | 'sine'> = ['triangle', 'square', 'sawtooth', 'sine'];
-
-    for (let i = 0; i < Math.max(count, 4); i++) {
-      const oscType = synthTypes[i % synthTypes.length];
-      const synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: oscType },
-        envelope: {
-          attack: 0.02,
-          decay: 0.1,
-          sustain: 0.7,
-          release: 0.2,
-        },
-      }).toDestination();
-      synth.volume.value = this.volumeDb;
-      this.synths.push(synth);
     }
   }
 
@@ -275,7 +239,6 @@ export class MidiAudioPlayer {
   }
 
   private stopAudioNodes() {
-    this.synths.forEach((s) => s.releaseAll());
     this.soundfontInstruments.forEach((inst) => inst.stop());
   }
 
@@ -296,9 +259,6 @@ export class MidiAudioPlayer {
 
   public setVolume(decibels: number): void {
     this.volumeDb = decibels;
-    this.synths.forEach((s) => {
-      s.volume.value = decibels;
-    });
   }
 
   private scheduleNotes(fromTime: number) {
@@ -309,7 +269,6 @@ export class MidiAudioPlayer {
     const volumeFactor = Math.pow(10, this.volumeDb / 20);
 
     tracksWithNotes.forEach((track, trackIndex) => {
-      const synth = this.synths[trackIndex % this.synths.length];
       const sfInstrument = this.trackInstruments[trackIndex];
 
       track.notes.forEach((note) => {
@@ -335,13 +294,11 @@ export class MidiAudioPlayer {
         this.scheduledEvents.push(eventId);
 
         // 発音処理
-        if (this.engine === 'soundfont' && sfInstrument) {
+        if (sfInstrument) {
           sfInstrument.play(note.name, noteStartTime, {
             duration,
             gain: velocity * 2.0, // 音量バランス調整
           });
-        } else if (synth) {
-          synth.triggerAttackRelease(note.name, duration, noteStartTime, velocity);
         }
       });
     });
@@ -387,9 +344,8 @@ export class MidiAudioPlayer {
 
   public dispose() {
     this.stop();
-    this.synths.forEach((s) => s.dispose());
-    this.synths = [];
     this.soundfontInstruments.clear();
+    this.trackInstruments = [];
   }
 }
 

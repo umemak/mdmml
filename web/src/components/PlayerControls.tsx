@@ -7,7 +7,6 @@ import {
   Volume2,
   Music,
   Activity,
-  Sliders,
   Sparkles,
   Loader2,
   SkipBack,
@@ -15,7 +14,7 @@ import {
   RotateCcw,
   Clock,
 } from 'lucide-react';
-import { MidiMetadata, PlayerState, SoundEngine, getMeasureDuration } from '../player';
+import { MidiMetadata, PlayerState, getMeasureDuration } from '../player';
 
 interface PlayerControlsProps {
   metadata: MidiMetadata | null;
@@ -31,8 +30,6 @@ interface PlayerControlsProps {
   volume: number;
   onVolumeChange: (vol: number) => void;
   isConverting: boolean;
-  engine: SoundEngine;
-  onEngineChange: (engine: SoundEngine) => void;
   isLoadingSoundfont: boolean;
 }
 
@@ -57,8 +54,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   volume,
   onVolumeChange,
   isConverting,
-  engine,
-  onEngineChange,
   isLoadingSoundfont,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -130,6 +125,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
               SMF (Format 1)
             </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <Sparkles className="w-3 h-3 text-cyan-300" />
+              <span>GM SoundFont</span>
+            </span>
           </div>
           <div className="flex items-center space-x-4 text-xs text-slate-400 mt-1">
             <span>BPM: <strong className="text-slate-200">{metadata.bpm}</strong></span>
@@ -146,38 +145,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           <Download className="w-4 h-4" />
           <span>.mid 保存</span>
         </button>
-      </div>
-
-      {/* 音源切り替えセレクター */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs">
-        <div className="flex items-center space-x-2 text-slate-300">
-          <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="font-medium">再生音源:</span>
-        </div>
-        <div className="flex items-center space-x-1.5 w-full sm:w-auto">
-          <button
-            onClick={() => onEngineChange('soundfont')}
-            className={`flex-1 sm:flex-none px-3 py-1 rounded text-xs font-medium transition cursor-pointer flex items-center justify-center space-x-1 ${
-              engine === 'soundfont'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sparkles className="w-3 h-3 mr-1 text-cyan-300" />
-            <span>GM SoundFont (リアル楽器)</span>
-          </button>
-
-          <button
-            onClick={() => onEngineChange('synth')}
-            className={`flex-1 sm:flex-none px-3 py-1 rounded text-xs font-medium transition cursor-pointer ${
-              engine === 'synth'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>8-bit レトロシンセ</span>
-          </button>
-        </div>
       </div>
 
       {/* Soundfont ロード中インジケータ */}
